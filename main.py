@@ -1,5 +1,3 @@
-# https://austinhenley.com/blog/teenytinycompiler1.html
-
 import sys
 import os
 import subprocess

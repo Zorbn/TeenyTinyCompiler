@@ -1,15 +1,13 @@
 import sys
 
 from lex import *
+from environment import *
 
 class Parser:
     def __init__(self, lexer, emitter):
         self.lexer = lexer
         self.emitter = emitter
 
-        # TODO: How can this be extended for multiple scopes? Maybe a different
-        # set is used for each statement, or something?
-        self.symbols = set()
         self.labels_declared = set()
         self.labels_gotoed = set()
 
@@ -57,9 +55,10 @@ class Parser:
         while self.check_token(TokenType.NEWLINE):
             self.next_token()
 
+        environment = Environment(None)
+
         # A program is composed of a series of statements.
-        while not self.check_token(TokenType.EOF):
-            self.statement()
+        self.block(TokenType.EOF, environment)
 
         self.emitter.emit_line("return 0;")
         self.emitter.emit_line("}")
@@ -69,7 +68,7 @@ class Parser:
             if label not in self.labels_declared:
                 self.abort(f"Attempting to GOTO an undeclared label \"{label}\"")
 
-    def statement(self):
+    def statement(self, environment):
         # "PRINT" (expression | string)
         if self.check_token(TokenType.PRINT):
             self.next_token()
@@ -79,40 +78,35 @@ class Parser:
                 self.next_token()
             else:
                 self.emitter.emit("printf(\"%.2f\\n\", (float)(")
-                self.expression()
+                self.expression(environment)
                 self.emitter.emit_line("));")
 
         # "IF" comparison "THEN" newline {statement} "ENDIF" newline
         elif self.check_token(TokenType.IF):
             self.next_token()
             self.emitter.emit("if (")
-            self.comparison()
+            self.comparison(environment)
 
             self.match(TokenType.THEN)
             self.newline()
             self.emitter.emit_line(") {")
 
-            # Zero or more statments in the body:
-            while not self.check_token(TokenType.ENDIF):
-                self.statement()
+            self.block(TokenType.ENDIF, environment)
 
-            self.match(TokenType.ENDIF)
             self.emitter.emit_line("}")
 
         # "WHILE" comparision "REPEAT" {statement} "ENDWHILE"
         elif self.check_token(TokenType.WHILE):
             self.next_token()
             self.emitter.emit("while (")
-            self.comparison()
+            self.comparison(environment)
 
             self.match(TokenType.REPEAT)
             self.newline()
             self.emitter.emit_line(") {")
 
-            while not self.check_token(TokenType.ENDWHILE):
-                self.statement()
+            self.block(TokenType.ENDWHILE, environment)
 
-            self.match(TokenType.ENDWHILE)
             self.emitter.emit_line("}")
 
         # "LABEL" ident
@@ -139,14 +133,16 @@ class Parser:
             self.next_token()
 
             # Make sure the ident exists in the symbol table.
-            if self.current_token.text not in self.symbols:
-                self.symbols.add(self.current_token.text)
-                self.emitter.header_line(f"float {self.current_token.text};")
+            if not environment.has_symbol(self.current_token.text):
+                environment.add_symbol(self.current_token.text)
+                # Emit the variables type if it is being declared.
+                self.emitter.emit("float ")
+
 
             self.emitter.emit(f"{self.current_token.text} = ")
             self.match(TokenType.IDENT)
             self.match(TokenType.EQ)
-            self.expression()
+            self.expression(environment)
             self.emitter.emit_line(";")
 
         # "INPUT" ident
@@ -154,8 +150,8 @@ class Parser:
             self.next_token()
 
             # Make sure the ident exists in the symbol table.
-            if self.current_token.text not in self.symbols:
-                self.symbols.add(self.current_token.text)
+            if not environment.has_symbol(self.current_token.text):
+                environment.add_symbol(self.current_token.text)
                 self.emitter.header_line(f"float {self.current_token.text};")
 
             self.emitter.emit_line(f"if (0 == scanf(\"%f\", &{self.current_token.text})) {{")
@@ -165,10 +161,19 @@ class Parser:
             self.emitter.emit_line("}")
             self.match(TokenType.IDENT)
 
-        else: # Unkown
+        else: # Unknown
             self.abort(f"Invalid statement at \"{self.current_token.text}\" ({self.current_token.kind.name})")
 
         self.newline()
+
+    # block ::= {statement} terminator
+    def block(self, terminator, enclosing_environment):
+        environment = Environment(enclosing_environment)
+
+        while not self.check_token(terminator):
+            self.statement(environment)
+
+        self.match(terminator)
 
     # newline ::= '\n'+
     def newline(self):
@@ -178,56 +183,56 @@ class Parser:
             self.next_token()
 
     # comparison ::= expression (("==" | "!=" | ">" | ">=" | "<" | "<=") expression)+
-    def comparison(self):
-        self.expression()
+    def comparison(self, environment):
+        self.expression(environment)
 
         if self.is_comparison_operator():
             self.emitter.emit(self.current_token.text)
             self.next_token()
-            self.expression()
+            self.expression(environment)
         else:
             self.abort(f"Expected comparison operator at: \"{self.current_token.text}\"")
 
         while self.is_comparison_operator():
             self.emitter.emit(self.current_token.text)
             self.next_token()
-            self.expression()
+            self.expression(environment)
 
     # expression ::= term {( "-" | "+" ) term}
-    def expression(self):
-        self.term()
+    def expression(self, environment):
+        self.term(environment)
 
         while self.check_token(TokenType.PLUS) or self.check_token(TokenType.MINUS):
             self.emitter.emit(self.current_token.text)
             self.next_token()
-            self.term()
+            self.term(environment)
 
     # term ::= unary {( "/" | "*" ) unary}
-    def term(self):
-        self.unary()
+    def term(self, environment):
+        self.unary(environment)
 
         while self.check_token(TokenType.ASTERISK) or self.check_token(TokenType.SLASH):
             self.emitter.emit(self.current_token.text)
             self.next_token()
-            self.unary()
+            self.unary(environment)
 
     # unary ::= ["+" | "-"] primary
-    def unary(self):
+    def unary(self, environment):
         # Optional unary +/-
         if self.check_token(TokenType.PLUS) or self.check_token(TokenType.MINUS):
             self.emitter.emit(self.current_token.text)
             self.next_token()
 
-        self.primary()
+        self.primary(environment)
 
     # primary ::= number | ident
-    def primary(self):
+    def primary(self, environment):
         if self.check_token(TokenType.NUMBER):
             self.emitter.emit(self.current_token.text)
             self.next_token()
         elif self.check_token(TokenType.IDENT):
             # Make sure that the variable exists before it is used.
-            if self.current_token.text not in self.symbols:
+            if not environment.has_symbol(self.current_token.text):
                 self.abort(f"Referencing variable before assignment: \"{self.current_token.text}\"")
 
             self.emitter.emit(self.current_token.text)

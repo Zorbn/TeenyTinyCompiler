@@ -1,0 +1,23 @@
+PRINT "guess a number from 1 to 100"
+LET number = 77
+LET guessedCorrectly = 0
+LET guess = 0
+
+WHILE guessedCorrectly == 0 REPEAT
+    INPUT guess
+
+    LET guessedCorrectly = 1
+    IF guess != number THEN
+        LET guessedCorrectly = 0
+
+        IF guess > number THEN
+            PRINT "too high"
+        ENDIF
+
+        IF guess < number THEN
+            PRINT "too low"
+        ENDIF
+    ENDIF
+ENDWHILE
+
+PRINT "nice job, you guessed the number"
