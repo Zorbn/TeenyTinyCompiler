@@ -12,6 +12,7 @@ POSSIBLE IMPROVEMENTS:
 - Multiple files, importing.
 - Heap allocations (w/ destructors?).
 - Arrays.
+- #line directives in generated code for better debugging: https://www.reddit.com/r/ProgrammingLanguages/comments/11i6kqh/what_could_go_wrong_making_a_vm_a_feeling_of_dread/
 """
 
 import sys

@@ -1,7 +1,6 @@
 PRINT "guess a number from 1 to 100"
-LET number = 77
-LET guessedCorrectly = 0
-LET guess = 0
+LET number: INT = 77
+LET guessedCorrectly: INT = 0
 
 WHILE guessedCorrectly == 0 REPEAT
     INPUT guess

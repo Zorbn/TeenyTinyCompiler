@@ -6,7 +6,6 @@ class TokenType(enum.Enum):
     NEWLINE = 0
     LPAREN = 1
     RPAREN = 2
-    NUMBER = 3
     IDENT = 4
     STRING = 5
     COMMA = 6
@@ -32,6 +31,9 @@ class TokenType(enum.Enum):
     DO = 114
     ENDFUNCTION = 115
 
+    INT = 116
+    FLOAT = 117
+
     # Operators:
     EQ = 201
     PLUS = 202
@@ -44,10 +46,6 @@ class TokenType(enum.Enum):
     LTEQ = 209
     GT = 210
     GTEQ = 211
-
-    # Types:
-    INT = 301
-    FLOAT = 302
 
 class Token:
     def __init__(self, token_text, token_kind) -> None:
@@ -118,6 +116,8 @@ class Lexer:
             token = Token(self.current_char, TokenType.RPAREN)
         elif self.current_char == ",": # Comma
             token = Token(self.current_char, TokenType.COMMA)
+        elif self.current_char == ":": # Colon
+            token = Token(self.current_char, TokenType.COLON)
         elif self.current_char == "\0": # EOF
             token = Token(self.current_char, TokenType.EOF)
 
@@ -174,9 +174,15 @@ class Lexer:
 
         elif self.current_char.isdigit(): # Number
             start_position = self.current_position
+
             while self.peek().isdigit():
                 self.next_char()
+
+            token_type = TokenType.INT
+
             if self.peek() == ".": # This number has a decimal.
+                token_type = TokenType.FLOAT
+
                 self.next_char()
 
                 # Decimal number must have at least one digit after the decimal.
@@ -187,7 +193,7 @@ class Lexer:
                     self.next_char()
 
             token_text = self.source[start_position : self.current_position + 1]
-            token = Token(token_text, TokenType.NUMBER)
+            token = Token(token_text, token_type)
 
         elif self.current_char.isalpha():
             start_position = self.current_position

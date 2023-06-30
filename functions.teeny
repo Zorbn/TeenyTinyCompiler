@@ -1,10 +1,10 @@
-FUNCTION printThree(a, b, c) DO
+FUNCTION printThree(a, b, c): FLOAT DO
     printTwo(a, b)
     PRINT c
     RETURN 3
 ENDFUNCTION
 
-FUNCTION printTwo(a, b) DO
+FUNCTION printTwo(a, b): FLOAT DO
     PRINT a
     PRINT b
     RETURN 2

@@ -1,0 +1,8 @@
+FUNCTION add(a: INT, b: INT): INT DO
+    RETURN a + b
+ENDFUNCTION
+
+LET a: INT = 5
+LET b: INT = 6
+
+PRINT add(a, b)

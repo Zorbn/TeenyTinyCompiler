@@ -1,7 +1,7 @@
-LET a = 1
+LET a: INT = 1
 
 IF a == 1 THEN
-    LET b = 777
+    LET b: INT = 777
     a = a + b
 ENDIF
 
