@@ -9,6 +9,7 @@ class ValueType(enum.Enum):
     VOID = 0
     INT = 1
     FLOAT = 2
+    BOOL = 3
 
     @staticmethod
     def from_token_type(token_type):
@@ -16,6 +17,8 @@ class ValueType(enum.Enum):
             return ValueType.INT
         elif token_type == TokenType.FLOAT:
             return ValueType.FLOAT
+        elif token_type == TokenType.BOOL:
+            return ValueType.BOOL
 
         return ValueType.VOID
 
@@ -25,6 +28,8 @@ class ValueType(enum.Enum):
             return "int"
         elif value_type == ValueType.FLOAT:
             return "float"
+        elif value_type == ValueType.BOOL:
+            return "bool"
 
         return "void"
 
@@ -100,6 +105,7 @@ class Parser:
         self.emitter.set_region(EmitRegion.PREPROCESSOR)
         self.emitter.emit_line("#define _CRT_SECURE_NO_WARNINGS")
         self.emitter.emit_line("#include <stdio.h>")
+        self.emitter.emit_line("#include <stdbool.h>")
         self.emitter.set_region(EmitRegion.HEADER)
         self.emitter.emit_line("int main(void) {")
         self.emitter.set_region(EmitRegion.CODE)
@@ -476,6 +482,16 @@ class Parser:
             self.emitter.emit(self.current_token.text)
             self.next_token()
             return ValueType.FLOAT
+
+        if self.check_token(TokenType.TRUE):
+            self.emitter.emit("true")
+            self.next_token()
+            return ValueType.BOOL
+
+        if self.check_token(TokenType.FALSE):
+            self.emitter.emit("false")
+            self.next_token()
+            return ValueType.BOOL
 
         if self.check_token(TokenType.IDENT):
             # Make sure that the variable exists before it is used.

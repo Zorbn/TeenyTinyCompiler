@@ -8,6 +8,4 @@ FUNCTION printTwo(a: FLOAT, b: FLOAT): VOID DO
     PRINT b
 ENDFUNCTION
 
-LET something: FLOAT = 5
-
 printThree(1.5, 2.0 + 3.0, 4.0 / 0.33)
