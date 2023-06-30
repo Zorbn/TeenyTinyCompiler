@@ -73,7 +73,11 @@ class Parser:
             if label not in self.labels_declared:
                 self.abort(f"Attempting to GOTO an undeclared label \"{label}\"")
 
+    # TODO: (Ongoing) Keep track of if blocks return a value: https://stackoverflow.com/questions/21945891/how-do-i-check-whether-all-code-paths-return-a-value
+    # TODO: All blocks should be able to return a value, which will make more sense once all code must be in a function. (one the frontend, that's already true in the backend)
     def statement(self, environment):
+        does_return = False
+
         # "PRINT" (expression | string)
         if self.check_token(TokenType.PRINT):
             self.next_token()
@@ -170,7 +174,6 @@ class Parser:
 
         # TODO: Add corresponding call statement, make sure when calling
         # that the function exists and has the correct number of arguments.
-        # TODO: Add return values.
         # TODO: Make sure function names don't collide with others when C is generated.
         # "FUNCTION" ident parameters "DO" block "ENDFUNCTION"
         elif self.check_token(TokenType.FUNCTION):
@@ -183,7 +186,7 @@ class Parser:
             if self.current_token.text in self.functions_declared:
                 self.abort(f"Function already exists: \"{self.current_token.text}\"")
             self.functions_declared.add(self.current_token.text)
-            self.emitter.emit(f"void {self.current_token.text}(")
+            self.emitter.emit(f"float {self.current_token.text}(")
             self.next_token()
 
             function_environment = Environment(None)
@@ -202,11 +205,20 @@ class Parser:
             self.emitter.emit_line(f"{prototype}) {{")
             self.emitter.clear_buffer()
 
-            self.block(TokenType.ENDFUNCTION, function_environment)
+            does_return = self.block(TokenType.ENDFUNCTION, function_environment)
+            if not does_return:
+                self.abort(f"Function does not return a value on all code paths")
 
             self.emitter.emit_line("}")
 
             self.emitter.set_region(EmitRegion.CODE)
+
+        elif self.check_token(TokenType.RETURN):
+            self.next_token()
+            self.emitter.emit("return ")
+            self.expression(environment)
+            self.emitter.emit_line(";")
+            does_return = True
 
         else: # Unknown
             self.expression(environment)
@@ -215,15 +227,20 @@ class Parser:
             # but now it allows any expression, should that be valid? This change was made to support function calls as statements.
 
         self.newline()
+        return does_return
 
     # block ::= {statement} terminator
     def block(self, terminator, enclosing_environment):
         environment = Environment(enclosing_environment)
 
+        does_return = False
+
         while not self.check_token(terminator):
-            self.statement(environment)
+            statement_returns = self.statement(environment)
+            does_return = does_return or statement_returns
 
         self.match(terminator) # TODO: Should this happen here or outside block() after it is run?
+        return does_return
 
     # newline ::= '\n'+
     def newline(self):

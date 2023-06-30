@@ -17,18 +17,19 @@ class TokenType(enum.Enum):
     PRINT = 103
     INPUT = 104
     LET = 105
+    RETURN = 106
 
-    IF = 106
-    THEN = 107
-    ENDIF = 108
+    IF = 107
+    THEN = 108
+    ENDIF = 109
 
-    WHILE = 109
-    REPEAT = 110
-    ENDWHILE = 111
+    WHILE = 110
+    REPEAT = 111
+    ENDWHILE = 112
 
-    FUNCTION = 112
-    DO = 113
-    ENDFUNCTION = 114
+    FUNCTION = 113
+    DO = 114
+    ENDFUNCTION = 115
 
     # Operators:
     EQ = 201
