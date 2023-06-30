@@ -29,15 +29,6 @@ OUTPUT_SRC = f"{OUTPUT_DIR}/out.c"
 OUTPUT_EXE_EXTENSION = ".exe" if os.name == "nt" else ""
 
 def main():
-    # lexer = Lexer("FUNCTION testingTesting(a, b, c) DO")
-
-    # token = lexer.get_token()
-    # while token.kind != TokenType.EOF:
-    #     print(token.kind)
-    #     token = lexer.get_token()
-
-    # return
-
     print("Teeny Tiny Compiler")
 
     if len(sys.argv) != 2:

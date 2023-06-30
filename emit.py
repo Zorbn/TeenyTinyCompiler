@@ -25,6 +25,9 @@ class Emitter:
     def set_region(self, region):
         self.current_region = region
 
+    def match_region(self, region):
+        return self.current_region == region
+
     def emit(self, code):
         self.emit_regions[self.current_region] += code
 

@@ -48,22 +48,25 @@ class TokenType(enum.Enum):
     GTEQ = 211
 
 class Token:
-    def __init__(self, token_text, token_kind) -> None:
-        self.text = token_text
-        self.kind = token_kind
+    def __init__(self, text, token_type) -> None:
+        self.text = text
+        self.token_type = token_type
 
     @staticmethod
     def check_if_keyword(token_text):
-        for kind in TokenType:
+        for token_type in TokenType:
             # Relies on keyword enums having an integer value in the 1XX range.
-            if kind.name == token_text and kind.value >= 100 and kind.value < 200:
-                return kind
+            if token_type.name == token_text and token_type.value >= 100 and token_type.value < 200:
+                return token_type
 
         return None
 
 class Lexer:
     def __init__(self, source):
         self.source = source + "\n"
+        self.reset_position()
+
+    def reset_position(self):
         self.current_char = ""
         self.current_position = -1
         self.next_char()
