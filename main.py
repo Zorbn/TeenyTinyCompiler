@@ -1,3 +1,19 @@
+"""
+POSSIBLE IMPROVEMENTS:
+- Port to another language?
+- Types (other than float).
+- Add line numbers when reporting errors.
+- Ability to declare extern c functions and call them.
+- Add an else branch to the if statement, update does_return tracking accordingly.
+- Logical and/or operators.
+- For loop.
+- Structures.
+- Main function.
+- Multiple files, importing.
+- Heap allocations (w/ destructors?).
+- Arrays.
+"""
+
 import sys
 import os
 import subprocess

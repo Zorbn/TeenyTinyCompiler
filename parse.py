@@ -11,7 +11,8 @@ class Parser:
 
         self.labels_declared = set()
         self.labels_gotoed = set()
-        self.functions_declared = set()
+        self.functions_declared = {}
+        self.functions_called = set()
 
         self.current_token = None
         self.peek_token = None
@@ -72,6 +73,16 @@ class Parser:
         for label in self.labels_gotoed:
             if label not in self.labels_declared:
                 self.abort(f"Attempting to GOTO an undeclared label \"{label}\"")
+
+        # Make sure all called functions have been declared.
+        for (name, argument_count) in self.functions_called:
+            if name not in self.functions_declared:
+                self.abort(f"Calling undefined function: \"{name}\"")
+
+            parameter_count = self.functions_declared[name]
+            if argument_count != parameter_count:
+                self.abort(f"Calling function \"{self.current_token.text}\" with incorrect number of arguments: expected {parameter_count} but got {argument_count}")
+
 
     # TODO: (Ongoing) Keep track of if blocks return a value: https://stackoverflow.com/questions/21945891/how-do-i-check-whether-all-code-paths-return-a-value
     # TODO: All blocks should be able to return a value, which will make more sense once all code must be in a function. (one the frontend, that's already true in the backend)
@@ -172,9 +183,7 @@ class Parser:
             self.emitter.emit_line("}")
             self.match(TokenType.IDENT)
 
-        # TODO: Add corresponding call statement, make sure when calling
-        # that the function exists and has the correct number of arguments.
-        # TODO: Make sure function names don't collide with others when C is generated.
+        # TODO: Make sure function names don't collide with others when C is generated. Maybe don't include C headers in the same file as the output, put all of the C code in a seperate file and then just import it's header in the main output code?
         # "FUNCTION" ident parameters "DO" block "ENDFUNCTION"
         elif self.check_token(TokenType.FUNCTION):
             self.next_token()
@@ -183,15 +192,16 @@ class Parser:
             self.emitter.set_region(EmitRegion.BUFFERED)
 
             # Make sure the function doesn't already exist.
-            if self.current_token.text in self.functions_declared:
-                self.abort(f"Function already exists: \"{self.current_token.text}\"")
-            self.functions_declared.add(self.current_token.text)
-            self.emitter.emit(f"float {self.current_token.text}(")
+            function_name = self.current_token.text
+            if function_name in self.functions_declared:
+                self.abort(f"Function already exists: \"{function_name}\"")
+            self.emitter.emit(f"float {function_name}(")
             self.next_token()
 
             function_environment = Environment(None)
 
-            self.parameters(function_environment)
+            parameter_count = self.parameters(function_environment)
+            self.functions_declared[function_name] = parameter_count
 
             self.match(TokenType.DO)
             self.newline()
@@ -266,6 +276,7 @@ class Parser:
             self.next_token()
 
         self.match(TokenType.RPAREN)
+        return count
 
     # comparison ::= expression (("==" | "!=" | ">" | ">=" | "<" | "<=") expression)+
     def comparison(self, environment):
@@ -315,10 +326,13 @@ class Parser:
         if not self.check_token(TokenType.IDENT) or not self.check_peek(TokenType.LPAREN):
             return self.primary(environment)
 
-        self.emitter.emit(f"{self.current_token.text}(")
+        function_name = self.current_token.text
+        self.emitter.emit(f"{function_name}(")
         self.next_token()
-        self.arguments(environment)
+        argument_count = self.arguments(environment)
         self.emitter.emit(")")
+
+        self.functions_called.add((function_name, argument_count))
 
     # arguments ::= "(" ("," expression)* ")"
     def arguments(self, environment):
@@ -334,6 +348,7 @@ class Parser:
             count += 1
 
         self.match(TokenType.RPAREN)
+        return count
 
     # primary ::= number | ident
     def primary(self, environment):
