@@ -31,8 +31,9 @@ class TokenType(enum.Enum):
     DO = 114
     ENDFUNCTION = 115
 
-    INT = 116
-    FLOAT = 117
+    VOID = 116
+    INT = 117
+    FLOAT = 118
 
     # Operators:
     EQ = 201

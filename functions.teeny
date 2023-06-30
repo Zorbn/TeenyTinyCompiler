@@ -1,13 +1,11 @@
-FUNCTION printThree(a, b, c): FLOAT DO
+FUNCTION printThree(a: FLOAT, b: FLOAT, c: FLOAT): VOID DO
     printTwo(a, b)
     PRINT c
-    RETURN 3
 ENDFUNCTION
 
-FUNCTION printTwo(a, b): FLOAT DO
+FUNCTION printTwo(a: FLOAT, b: FLOAT): VOID DO
     PRINT a
     PRINT b
-    RETURN 2
 ENDFUNCTION
 
-PRINT printThree(1.5, 2 + 3, 4.0 / 0.33)
+printThree(1.5, 2.0 + 3.0, 4.0 / 0.33)

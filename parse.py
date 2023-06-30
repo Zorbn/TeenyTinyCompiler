@@ -6,8 +6,9 @@ from emit import *
 from environment import *
 
 class ValueType(enum.Enum):
-    INT = 0
-    FLOAT = 1
+    VOID = 0
+    INT = 1
+    FLOAT = 2
 
     @staticmethod
     def from_token_type(token_type):
@@ -16,7 +17,7 @@ class ValueType(enum.Enum):
         elif token_type == TokenType.FLOAT:
             return ValueType.FLOAT
 
-        return None
+        return ValueType.VOID
 
     @staticmethod
     def to_c_type(value_type):
@@ -25,7 +26,7 @@ class ValueType(enum.Enum):
         elif value_type == ValueType.FLOAT:
             return "float"
 
-        return None
+        return "void"
 
 @dataclass
 class FunctionDeclaration:
@@ -71,9 +72,9 @@ class Parser:
         sys.exit(f"Parsing error! {message}")
 
     def combine_type(self, old_type, new_type):
-        if old_type is None:
+        if old_type is ValueType.VOID:
             return new_type
-        elif new_type is not None and old_type != new_type:
+        elif new_type is not ValueType.VOID and old_type != new_type:
             self.abort(f"Cannot mix types, expected {old_type} got {new_type}")
 
         return old_type
@@ -134,8 +135,9 @@ class Parser:
     # TODO: (Ongoing) Keep track of if blocks return a value: https://stackoverflow.com/questions/21945891/how-do-i-check-whether-all-code-paths-return-a-value
     # TODO: All blocks should be able to return a value, which will make more sense once all code must be in a function. (one the frontend, that's already true in the backend)
     def statement(self, environment):
-        return_type = None
+        return_type = ValueType.VOID
 
+        # TODO: Replace this with the stdlib when possible.
         # "PRINT" (expression | string)
         if self.check_token(TokenType.PRINT):
             self.next_token()
@@ -271,7 +273,7 @@ class Parser:
     def block(self, terminator, enclosing_environment):
         environment = Environment(enclosing_environment)
 
-        return_type = None
+        return_type = ValueType.VOID
 
         while not self.check_token(terminator):
             statement_return_type = self.statement(environment)
