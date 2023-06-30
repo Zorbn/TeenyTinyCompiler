@@ -209,12 +209,16 @@ class Parser:
 
             self.match(TokenType.COLON)
             (value_type, c_type) = self.token_to_types()
+            if value_type == ValueType.VOID:
+                self.abort(f"Variables can't be of type \"{value_type}\"")
             environment.add_symbol(variable_name, value_type)
             self.next_token()
 
             self.emitter.emit(f"{c_type} {variable_name} = ")
             self.match(TokenType.EQ)
-            self.expression(environment)
+            expression_type = self.expression(environment)
+            if expression_type != value_type:
+                self.abort(f"Can't initialize variable of type \"{value_type}\" with a value of type \"{expression_type}\"")
             self.emitter.emit_line(";")
 
         # ident "=" expression
