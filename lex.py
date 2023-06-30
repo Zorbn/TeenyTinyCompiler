@@ -10,6 +10,7 @@ class TokenType(enum.Enum):
     IDENT = 4
     STRING = 5
     COMMA = 6
+    COLON = 7
 
     # Keywords:
     LABEL = 101
@@ -43,6 +44,10 @@ class TokenType(enum.Enum):
     LTEQ = 209
     GT = 210
     GTEQ = 211
+
+    # Types:
+    INT = 301
+    FLOAT = 302
 
 class Token:
     def __init__(self, token_text, token_kind) -> None:

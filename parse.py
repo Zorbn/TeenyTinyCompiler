@@ -152,12 +152,22 @@ class Parser:
         elif self.check_token(TokenType.LET):
             self.next_token()
 
+            # Make sure the ident doesn't exist in the symbol table.
+            if environment.has_symbol(self.current_token.text):
+                self.abort(f"Variable already exists: \"{self.current_token.text}\"")
+            environment.add_symbol(self.current_token.text)
+
+            self.emitter.emit(f"float {self.current_token.text} = ")
+            self.match(TokenType.IDENT)
+            self.match(TokenType.EQ)
+            self.expression(environment)
+            self.emitter.emit_line(";")
+
+        # ident "=" expression
+        elif self.check_token(TokenType.IDENT) and self.check_peek(TokenType.EQ):
             # Make sure the ident exists in the symbol table.
             if not environment.has_symbol(self.current_token.text):
-                environment.add_symbol(self.current_token.text)
-                # Emit the variables type if it is being declared.
-                self.emitter.emit("float ")
-
+                self.abort(f"Variable doesn't exist: \"{self.current_token.text}\"")
 
             self.emitter.emit(f"{self.current_token.text} = ")
             self.match(TokenType.IDENT)

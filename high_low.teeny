@@ -6,9 +6,9 @@ LET guess = 0
 WHILE guessedCorrectly == 0 REPEAT
     INPUT guess
 
-    LET guessedCorrectly = 1
+    guessedCorrectly = 1
     IF guess != number THEN
-        LET guessedCorrectly = 0
+        guessedCorrectly = 0
 
         IF guess > number THEN
             PRINT "too high"

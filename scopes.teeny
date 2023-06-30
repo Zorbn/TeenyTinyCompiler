@@ -2,7 +2,7 @@ LET a = 1
 
 IF a == 1 THEN
     LET b = 777
-    LET a = a + b
+    a = a + b
 ENDIF
 
 PRINT a
