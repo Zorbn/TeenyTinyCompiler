@@ -1,0 +1,11 @@
+FUNCTION printThree(a, b, c) DO
+    printTwo(a, b)
+    PRINT c
+ENDFUNCTION
+
+FUNCTION printTwo(a, b) DO
+    PRINT a
+    PRINT b
+ENDFUNCTION
+
+PRINT printThree(1.5, 2 + 3, 4.0 / 0.33)

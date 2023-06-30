@@ -1,6 +1,7 @@
 import sys
 
 from lex import *
+from emit import *
 from environment import *
 
 class Parser:
@@ -10,6 +11,7 @@ class Parser:
 
         self.labels_declared = set()
         self.labels_gotoed = set()
+        self.functions_declared = set()
 
         self.current_token = None
         self.peek_token = None
@@ -45,11 +47,14 @@ class Parser:
     Rules
     """
 
-    # program ::= {statement}
+    # program ::= block
     def program(self):
-        self.emitter.header_line("#define _CRT_SECURE_NO_WARNINGS")
-        self.emitter.header_line("#include <stdio.h>")
-        self.emitter.header_line("int main(void) {")
+        self.emitter.set_region(EmitRegion.PREPROCESSOR)
+        self.emitter.emit_line("#define _CRT_SECURE_NO_WARNINGS")
+        self.emitter.emit_line("#include <stdio.h>")
+        self.emitter.set_region(EmitRegion.HEADER)
+        self.emitter.emit_line("int main(void) {")
+        self.emitter.set_region(EmitRegion.CODE)
 
         # Skip leading newlines.
         while self.check_token(TokenType.NEWLINE):
@@ -81,7 +86,7 @@ class Parser:
                 self.expression(environment)
                 self.emitter.emit_line("));")
 
-        # "IF" comparison "THEN" newline {statement} "ENDIF" newline
+        # "IF" comparison "THEN" newline block "ENDIF" newline
         elif self.check_token(TokenType.IF):
             self.next_token()
             self.emitter.emit("if (")
@@ -95,7 +100,7 @@ class Parser:
 
             self.emitter.emit_line("}")
 
-        # "WHILE" comparision "REPEAT" {statement} "ENDWHILE"
+        # "WHILE" comparision "REPEAT" block "ENDWHILE"
         elif self.check_token(TokenType.WHILE):
             self.next_token()
             self.emitter.emit("while (")
@@ -152,7 +157,9 @@ class Parser:
             # Make sure the ident exists in the symbol table.
             if not environment.has_symbol(self.current_token.text):
                 environment.add_symbol(self.current_token.text)
-                self.emitter.header_line(f"float {self.current_token.text};")
+                self.emitter.set_region(EmitRegion.HEADER)
+                self.emitter.emit_line(f"float {self.current_token.text};")
+                self.emitter.set_region(EmitRegion.CODE)
 
             self.emitter.emit_line(f"if (0 == scanf(\"%f\", &{self.current_token.text})) {{")
             self.emitter.emit_line(f"{self.current_token.text} = 0;")
@@ -161,8 +168,51 @@ class Parser:
             self.emitter.emit_line("}")
             self.match(TokenType.IDENT)
 
+        # TODO: Add corresponding call statement, make sure when calling
+        # that the function exists and has the correct number of arguments.
+        # TODO: Add return values.
+        # TODO: Make sure function names don't collide with others when C is generated.
+        # "FUNCTION" ident parameters "DO" block "ENDFUNCTION"
+        elif self.check_token(TokenType.FUNCTION):
+            self.next_token()
+
+            # Parse the function prototype into the emit buffer.
+            self.emitter.set_region(EmitRegion.BUFFERED)
+
+            # Make sure the function doesn't already exist.
+            if self.current_token.text in self.functions_declared:
+                self.abort(f"Function already exists: \"{self.current_token.text}\"")
+            self.functions_declared.add(self.current_token.text)
+            self.emitter.emit(f"void {self.current_token.text}(")
+            self.next_token()
+
+            function_environment = Environment(None)
+
+            self.parameters(function_environment)
+
+            self.match(TokenType.DO)
+            self.newline()
+
+            # The function prototype has now been parsed, write it into both the
+            # function region and the prototype region.
+            prototype = self.emitter.get_buffer();
+            self.emitter.set_region(EmitRegion.PROTOTYPE)
+            self.emitter.emit_line(f"{prototype});")
+            self.emitter.set_region(EmitRegion.FUNCTION)
+            self.emitter.emit_line(f"{prototype}) {{")
+            self.emitter.clear_buffer()
+
+            self.block(TokenType.ENDFUNCTION, function_environment)
+
+            self.emitter.emit_line("}")
+
+            self.emitter.set_region(EmitRegion.CODE)
+
         else: # Unknown
-            self.abort(f"Invalid statement at \"{self.current_token.text}\" ({self.current_token.kind.name})")
+            self.expression(environment)
+            self.emitter.emit_line(";")
+            # TODO: This branch used to be an error, self.abort(f"Invalid statement at \"{self.current_token.text}\" ({self.current_token.kind.name})")
+            # but now it allows any expression, should that be valid? This change was made to support function calls as statements.
 
         self.newline()
 
@@ -173,7 +223,7 @@ class Parser:
         while not self.check_token(terminator):
             self.statement(environment)
 
-        self.match(terminator)
+        self.match(terminator) # TODO: Should this happen here or outside block() after it is run?
 
     # newline ::= '\n'+
     def newline(self):
@@ -181,6 +231,24 @@ class Parser:
 
         while self.check_token(TokenType.NEWLINE):
             self.next_token()
+
+    # parameters ::= "(" ("," ident)* ")"
+    def parameters(self, environment):
+        self.match(TokenType.LPAREN)
+
+        count = 0
+        while not self.check_token(TokenType.RPAREN):
+            if count > 0:
+                self.match(TokenType.COMMA)
+                self.emitter.emit(", ")
+
+            self.emitter.emit(f"float {self.current_token.text}")
+            environment.add_symbol(self.current_token.text)
+
+            count += 1
+            self.next_token()
+
+        self.match(TokenType.RPAREN)
 
     # comparison ::= expression (("==" | "!=" | ">" | ">=" | "<" | "<=") expression)+
     def comparison(self, environment):
@@ -216,14 +284,39 @@ class Parser:
             self.next_token()
             self.unary(environment)
 
-    # unary ::= ["+" | "-"] primary
+    # unary ::= ["+" | "-"] call
     def unary(self, environment):
         # Optional unary +/-
         if self.check_token(TokenType.PLUS) or self.check_token(TokenType.MINUS):
             self.emitter.emit(self.current_token.text)
             self.next_token()
 
-        self.primary(environment)
+        self.call(environment)
+
+    # call ::= ident arguments | primary # TODO: This may be incorrect BNF because call checks for parenthesis to choose between the two options.
+    def call(self, environment):
+        if not self.check_token(TokenType.IDENT) or not self.check_peek(TokenType.LPAREN):
+            return self.primary(environment)
+
+        self.emitter.emit(f"{self.current_token.text}(")
+        self.next_token()
+        self.arguments(environment)
+        self.emitter.emit(")")
+
+    # arguments ::= "(" ("," expression)* ")"
+    def arguments(self, environment):
+        self.match(TokenType.LPAREN)
+
+        count = 0
+        while not self.check_token(TokenType.RPAREN):
+            if count > 0:
+                self.match(TokenType.COMMA)
+                self.emitter.emit(", ")
+
+            self.expression(environment)
+            count += 1
+
+        self.match(TokenType.RPAREN)
 
     # primary ::= number | ident
     def primary(self, environment):
