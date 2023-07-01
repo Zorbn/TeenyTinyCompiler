@@ -139,8 +139,8 @@ impl Lexer {
         token
     }
 
-    pub fn get_token_text(&self, token: &Token) -> &[u8] {
-        &self.source[token.text_start..token.text_end]
+    pub fn get_source(&self) -> &Vec<u8> {
+        &self.source
     }
 
     fn next_char(&mut self) {

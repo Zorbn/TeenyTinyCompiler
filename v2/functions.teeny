@@ -1,0 +1,11 @@
+function printThree(a: float, b: float, c: float): void do
+    printTwo(a, b)
+    print c
+endfunction
+
+function printTwo(a: float, b: float): void do
+    print a
+    print b
+endfunction
+
+printThree(1.5, 2.0 + 3.0, 4.0 / 0.33)

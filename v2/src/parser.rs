@@ -19,15 +19,6 @@ fn token_type_to_value_type(token_type: TokenType) -> ValueType {
     }
 }
 
-fn value_type_to_c_type(value_type: ValueType) -> &'static str {
-    match value_type {
-        ValueType::Int => "int",
-        ValueType::Float => "float",
-        ValueType::Bool => "bool",
-        _ => "void",
-    }
-}
-
 #[derive(Debug, Clone, Copy)]
 pub enum ExpressionOp {
     Plus,
@@ -134,8 +125,7 @@ pub enum Node {
         text_end: usize,
     },
     PrimaryBool {
-        text_start: usize,
-        text_end: usize,
+        is_true: bool,
     },
     PrimaryIdent {
         text_start: usize,
@@ -182,7 +172,8 @@ pub enum Node {
         block_index: usize,
     },
     Parameters {
-        list: Arc<Vec<Parameter>>,
+        input_list: Arc<Vec<Parameter>>,
+        return_type: ValueType,
     },
 }
 
@@ -210,6 +201,11 @@ impl Parser {
         parser.reset_tokens();
 
         parser
+    }
+
+    pub fn get_text(&self, text_start: usize, text_end: usize) -> &str {
+        std::str::from_utf8(&self.lexer.get_source()[text_start..text_end])
+            .expect("Couldn't convert source slice to string")
     }
 
     fn reset_tokens(&mut self) {
@@ -394,7 +390,7 @@ impl Parser {
         self.add_node(node.expect("Failed to create node from statement"))
     }
 
-    // "function" ident parameters ":" type "do" block "endfunction"
+    // "function" ident parameters "do" block "endfunction"
     fn function(&mut self) -> usize {
         self.next_token();
 
@@ -414,7 +410,7 @@ impl Parser {
         })
     }
 
-    // parameters ::= "(" ("," ident ":" type)* ")"
+    // parameters ::= "(" ("," ident ":" type)* ")" ":" type
     fn parameters(&mut self) -> usize {
         self.match_token(TokenType::LParen);
 
@@ -438,7 +434,12 @@ impl Parser {
             });
         }
 
-        self.add_node(Node::Parameters { list: Arc::new(list) })
+        self.match_token(TokenType::RParen);
+        self.match_token(TokenType::Colon);
+        let return_type = token_type_to_value_type(self.current_token.token_type);
+        self.next_token();
+
+        self.add_node(Node::Parameters { input_list: Arc::new(list), return_type })
     }
 
     // arguments ::= "(" ("," expression)* ")"
@@ -466,9 +467,7 @@ impl Parser {
         let op = match token_type_to_comparison_op(self.current_token.token_type) {
             Some(op) => op,
             None => {
-                let current_token_string =
-                    std::str::from_utf8(self.lexer.get_token_text(&self.current_token))
-                        .expect("Couldn't convert unexpected token to string");
+                let current_token_string = self.get_text(self.current_token.text_start, self.current_token.text_end);
                 self.abort(&format!(
                     "Expected comparsion operator at: \"{}\"",
                     current_token_string
@@ -578,18 +577,18 @@ impl Parser {
                 text_start: self.current_token.text_start,
                 text_end: self.current_token.text_end,
             }),
-            TokenType::True | TokenType::False => self.add_node(Node::PrimaryBool {
-                text_start: self.current_token.text_start,
-                text_end: self.current_token.text_end,
+            TokenType::True => self.add_node(Node::PrimaryBool {
+                is_true: true,
+            }),
+            TokenType::False => self.add_node(Node::PrimaryBool {
+                is_true: false,
             }),
             TokenType::Ident => self.add_node(Node::PrimaryIdent {
                 text_start: self.current_token.text_start,
                 text_end: self.current_token.text_end,
             }),
             _ => {
-                let current_token_string =
-                    std::str::from_utf8(self.lexer.get_token_text(&self.current_token))
-                        .expect("Couldn't convert unexpected token to string");
+                let current_token_string = self.get_text(self.current_token.text_start, self.current_token.text_end);
                 self.abort(&format!("Unexpected token at \"{}\"", current_token_string));
                 unreachable!()
             }
