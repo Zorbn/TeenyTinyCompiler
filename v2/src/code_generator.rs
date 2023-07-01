@@ -40,9 +40,8 @@ impl CodeGenerator {
         self.emitter.emit_line("#define _CRT_SECURE_NO_WARNINGS");
         self.emitter.emit_line("#include <stdio.h>");
         self.emitter.emit_line("#include <stdbool.h>");
-        self.emitter.set_region(EmitRegion::Header);
-        self.emitter.emit("int main(void)");
         self.emitter.set_region(EmitRegion::Code);
+        self.emitter.emit("int main(void) ");
 
         self.block(block_index);
     }
@@ -50,6 +49,8 @@ impl CodeGenerator {
     fn block(&mut self, index: usize) {
         let Node::Block { statement_indices } = self.parser.ast[index].clone() else { unreachable!() };
         self.emitter.emit_line("{");
+        self.emitter.indent();
+
         for statement_index in statement_indices.iter() {
             match &self.parser.ast[*statement_index] {
                 Node::StatementPrintString { .. } => self.statement_print_string(*statement_index),
@@ -70,6 +71,8 @@ impl CodeGenerator {
                 _ => self.abort("Encountered a non-statement node within a block"),
             }
         }
+
+        self.emitter.unindent();
         self.emitter.emit_line("}");
     }
 
@@ -290,7 +293,9 @@ impl CodeGenerator {
         self.emitter.emit(" ");
         self.emitter.emit(self.parser.get_text(name_start, name_end));
         self.parameters(parameters_index);
+        self.emitter.emit(" ");
         self.block(block_index);
+        self.emitter.emit_line("");
 
         self.emitter.set_region(EmitRegion::Code);
     }
