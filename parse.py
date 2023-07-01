@@ -279,6 +279,7 @@ class Parser:
         self.newline()
         return return_type
 
+    # TODO: The block should probably emit it's own {} rather than the caller doing it.
     # block ::= {statement} terminator
     def block(self, terminator, enclosing_environment):
         environment = Environment(enclosing_environment)

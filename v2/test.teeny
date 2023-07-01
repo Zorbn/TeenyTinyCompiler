@@ -1,0 +1,7 @@
+let a: int = 5
+
+while a < 10 repeat
+    a = a + 1
+endwhile
+
+print a
