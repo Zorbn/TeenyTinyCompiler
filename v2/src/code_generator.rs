@@ -39,9 +39,13 @@ impl CodeGenerator {
         self.emitter.emit_line("#include <stdio.h>");
         self.emitter.emit_line("#include <stdbool.h>");
 
-        self.emitter.set_region(EmitRegion::Code);
+        self.emitter.set_region(EmitRegion::Body);
+        for (i, function_index) in function_indices.iter().enumerate() {
+            // Seperate function definitions by a newline.
+            if i > 0 {
+                self.emitter.emit_line("");
+            }
 
-        for function_index in function_indices.iter() {
             self.function(*function_index);
         }
     }
@@ -288,16 +292,13 @@ impl CodeGenerator {
         self.parameters(parameters_index);
         self.emitter.emit_line(";");
 
-        self.emitter.set_region(EmitRegion::Function);
+        self.emitter.set_region(EmitRegion::Body);
         self.emitter.emit(c_return_type);
         self.emitter.emit(" ");
         self.emitter.emit(self.parser.get_text(name_start, name_end));
         self.parameters(parameters_index);
         self.emitter.emit(" ");
         self.block(block_index);
-        self.emitter.emit_line("");
-
-        self.emitter.set_region(EmitRegion::Code);
     }
 
     fn parameters(&mut self, index: usize) {

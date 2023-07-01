@@ -4,11 +4,10 @@ use std::io::Write;
 pub enum EmitRegion {
     Preprocessor,
     Prototype,
-    Function,
-    Code,
+    Body,
 }
 
-const EMIT_REGION_COUNT: usize = 4;
+const EMIT_REGION_COUNT: usize = 3;
 
 pub struct Emitter {
     emit_regions: [String; EMIT_REGION_COUNT],
@@ -23,7 +22,7 @@ impl Emitter {
             emit_regions: Default::default(),
             is_region_at_line_start: [true; EMIT_REGION_COUNT],
             emit_region_indent_levels: [0; EMIT_REGION_COUNT],
-            current_region: EmitRegion::Code,
+            current_region: EmitRegion::Body,
         }
     }
 
@@ -72,22 +71,16 @@ impl Emitter {
             "{}",
             self.emit_regions[EmitRegion::Preprocessor as usize]
         )?;
-
-        let has_functions = !self.emit_regions[EmitRegion::Prototype as usize].is_empty();
-        if has_functions {
-            writeln!(
-                output,
-                "{}",
-                self.emit_regions[EmitRegion::Prototype as usize]
-            )?;
-            write!(
-                output,
-                "{}",
-                self.emit_regions[EmitRegion::Function as usize]
-            )?;
-        }
-
-        write!(output, "{}", self.emit_regions[EmitRegion::Code as usize])?;
+        writeln!(
+            output,
+            "{}",
+            self.emit_regions[EmitRegion::Prototype as usize]
+        )?;
+        write!(
+            output,
+            "{}",
+            self.emit_regions[EmitRegion::Body as usize]
+        )?;
 
         Ok(())
     }
