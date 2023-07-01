@@ -13,10 +13,4 @@ fn main() {
     let parser = Parser::new(lexer);
     let mut code_generator = CodeGenerator::new(parser);
     code_generator.emit();
-
-    // let mut token = lexer.get_token();
-    // while token.token_type != lexer::TokenType::Eof {
-    //     println!("{:?} \"{}\"", token.token_type, String::from_utf8_lossy(lexer.get_token_text(&token)));
-    //     token = lexer.get_token();
-    // }
 }

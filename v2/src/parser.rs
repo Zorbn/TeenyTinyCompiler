@@ -223,7 +223,6 @@ impl Parser {
     fn next_token(&mut self) {
         self.current_token = self.peek_token;
         self.peek_token = self.lexer.get_token();
-        println!("Moved to: \"{:?}\"", self.current_token.token_type);
     }
 
     fn abort(&self, message: &str) {
@@ -283,7 +282,9 @@ impl Parser {
     }
 
     fn newline(&mut self) {
-        self.match_token(TokenType::Newline);
+        if !self.check_token(TokenType::Newline) && !self.check_token(TokenType::Eof) {
+            self.abort("Expected line to be terminated")
+        }
 
         while self.check_token(TokenType::Newline) {
             self.next_token();

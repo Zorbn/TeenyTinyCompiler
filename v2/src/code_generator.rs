@@ -1,17 +1,24 @@
-use crate::parser::{Node, Parser};
+use crate::{parser::{Node, Parser}, emitter::Emitter};
+
+const OUTPUT_FILE: &str = "out.c";
 
 pub struct CodeGenerator {
     parser: Parser,
+    emitter: Emitter,
 }
 
 impl CodeGenerator {
     pub fn new(parser: Parser) -> Self {
-        Self { parser }
+        Self {
+            parser,
+            emitter: Emitter::new(),
+        }
     }
 
     pub fn emit(&mut self) {
         let program_index = self.parser.program();
         self.program(program_index);
+        self.emitter.write_file(OUTPUT_FILE).expect("Failed to write generated code to the output file");
     }
 
     fn abort(&self, message: &str) {
@@ -52,6 +59,7 @@ impl CodeGenerator {
             term_index,
             trailing_terms,
         } = self.parser.ast[index].clone() else { unreachable!() };
+
         self.term(term_index);
 
         for trailing_term in trailing_terms.iter() {
@@ -60,7 +68,6 @@ impl CodeGenerator {
     }
 
     fn string(&mut self, index: usize) {
-        todo!()
     }
 
     fn statement_print_string(&mut self, index: usize) {
@@ -78,6 +85,7 @@ impl CodeGenerator {
             unary_index,
             trailing_unaries,
         } = self.parser.ast[index].clone() else { unreachable!() };
+
         self.unary(unary_index);
 
         for trailing_unary in trailing_unaries.iter() {
@@ -86,7 +94,12 @@ impl CodeGenerator {
     }
 
     fn unary(&mut self, index: usize) {
-        todo!()
+        let Node::Unary { op, call_index } = self.parser.ast[index] else { unreachable!() };
+        match self.parser.ast[call_index] {
+            Node::CallFunction { .. } => self.call_function(call_index),
+            Node::CallPrimary { .. } => self.call_primary(call_index),
+            _ => self.abort("Encountered a non-call node within a unary"),
+        }
     }
 
     fn call_function(&mut self, index: usize) {
@@ -110,19 +123,15 @@ impl CodeGenerator {
     }
 
     fn primary_int(&mut self, index: usize) {
-        todo!()
     }
 
     fn primary_float(&mut self, index: usize) {
-        todo!()
     }
 
     fn primary_bool(&mut self, index: usize) {
-        todo!()
     }
 
     fn primary_ident(&mut self, index: usize) {
-        todo!()
     }
 
     fn arguments(&mut self, index: usize) {
@@ -183,7 +192,6 @@ impl CodeGenerator {
     fn parameters(&mut self, index: usize) {
         let Node::Parameters { list } = self.parser.ast[index].clone() else { unreachable!() };
         for parameter in list.iter() {
-            todo!()
         }
     }
 }
