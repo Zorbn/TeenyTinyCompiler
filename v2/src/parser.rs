@@ -556,6 +556,7 @@ impl Parser {
 
         let name_start = self.current_token.text_start;
         let name_end = self.current_token.text_end;
+        self.next_token();
 
         let arguments_index = self.arguments();
 

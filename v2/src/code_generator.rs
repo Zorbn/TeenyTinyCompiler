@@ -152,9 +152,7 @@ impl CodeGenerator {
         } = self.parser.ast[index] else { unreachable!() };
         let function_name = self.parser.get_text(name_start, name_end);
         self.emitter.emit(function_name);
-        self.emitter.emit("(");
         self.arguments(arguments_index);
-        self.emitter.emit(")");
     }
 
     fn call_primary(&mut self, index: usize) {
@@ -196,6 +194,7 @@ impl CodeGenerator {
 
     fn arguments(&mut self, index: usize) {
         let Node::Arguments { expression_indices } = self.parser.ast[index].clone() else { unreachable!() };
+        self.emitter.emit("(");
         for (i, expression_index) in expression_indices.iter().enumerate() {
             if i > 0 {
                 self.emitter.emit(", ");
@@ -203,6 +202,7 @@ impl CodeGenerator {
 
             self.expression(*expression_index);
         }
+        self.emitter.emit(")");
     }
 
     fn comparison(&mut self, index: usize) {
@@ -275,7 +275,7 @@ impl CodeGenerator {
 
     fn statement_function(&mut self, index: usize) {
         let Node::StatementFunction { name_start, name_end, parameters_index, block_index } = self.parser.ast[index] else { unreachable!() };
-        let Node::Parameters { return_type, .. } = self.parser.ast[index].clone() else { unreachable!() };
+        let Node::Parameters { return_type, .. } = self.parser.ast[parameters_index].clone() else { unreachable!() };
         let c_return_type = value_type_to_c_type(return_type);
 
         self.emitter.set_region(EmitRegion::Prototype);
@@ -297,6 +297,7 @@ impl CodeGenerator {
 
     fn parameters(&mut self, index: usize) {
         let Node::Parameters { input_list, .. } = self.parser.ast[index].clone() else { unreachable!() };
+        self.emitter.emit("(");
         for (i, parameter) in input_list.iter().enumerate() {
             if i > 0 {
                 self.emitter.emit(", ");
@@ -308,5 +309,6 @@ impl CodeGenerator {
             let name = self.parser.get_text(parameter.name_start, parameter.name_end);
             self.emitter.emit(name);
         }
+        self.emitter.emit(")");
     }
 }
