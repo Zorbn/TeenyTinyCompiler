@@ -1,13 +1,14 @@
-mod lexer;
-mod parser;
 mod code_generator;
 mod emitter;
+mod lexer;
+mod parser;
 
+use code_generator::CodeGenerator;
 use lexer::Lexer;
 use parser::Parser;
-use code_generator::CodeGenerator;
 
 const CC: &str = "clang";
+const CC_FLAGS: [&str; 2] = ["-std=c99", "-O3"];
 const OUTPUT_DIR: &str = "build";
 const OUTPUT_SRC: &str = "out.c";
 
@@ -43,7 +44,12 @@ fn main() {
     };
     let output_exe_path = format!("{}/out{}", OUTPUT_DIR, output_exe_extension);
     println!("Calling system compiler...");
-    if std::process::Command::new(CC).args([&output_src_path, "-std=c99", "-o", &output_exe_path]).output().is_err() {
+    if std::process::Command::new(CC)
+        .args([&output_src_path, "-o", &output_exe_path])
+        .args(CC_FLAGS)
+        .output()
+        .is_err()
+    {
         abort("Couldn't compile using the system compiler!", -3)
     }
 

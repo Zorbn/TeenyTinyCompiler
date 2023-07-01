@@ -1,7 +1,16 @@
-let a: int = 5
+function myPrint(): void do
+    print 6
+endfunction
 
-while a < 10 repeat
-    a = a + 1
-endwhile
+function main(): int do
+    let a: int = 5
 
-print a
+    while a < 10 repeat
+        a = a + 1
+    endwhile
+
+    print a
+    myPrint()
+
+    return 0
+endfunction

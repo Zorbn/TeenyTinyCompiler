@@ -33,15 +33,17 @@ impl CodeGenerator {
     }
 
     fn program(&mut self, index: usize) {
-        let Node::Program { block_index } = self.parser.ast[index] else { unreachable!() };
+        let Node::Program { function_indices } = self.parser.ast[index].clone() else { unreachable!() };
         self.emitter.set_region(EmitRegion::Preprocessor);
         self.emitter.emit_line("#define _CRT_SECURE_NO_WARNINGS");
         self.emitter.emit_line("#include <stdio.h>");
         self.emitter.emit_line("#include <stdbool.h>");
-        self.emitter.set_region(EmitRegion::Code);
-        self.emitter.emit("int main(void) ");
 
-        self.block(block_index);
+        self.emitter.set_region(EmitRegion::Code);
+
+        for function_index in function_indices.iter() {
+            self.function(*function_index);
+        }
     }
 
     fn block(&mut self, index: usize) {
@@ -65,7 +67,6 @@ impl CodeGenerator {
                 }
                 Node::StatementReturn { .. } => self.statement_return(*statement_index),
                 Node::StatementExpression { .. } => self.statement_expression(*statement_index),
-                Node::StatementFunction { .. } => self.statement_function(*statement_index),
                 _ => self.abort("Encountered a non-statement node within a block"),
             }
         }
@@ -275,8 +276,8 @@ impl CodeGenerator {
         self.emitter.emit_line(";");
     }
 
-    fn statement_function(&mut self, index: usize) {
-        let Node::StatementFunction { name_start, name_end, parameters_index, block_index } = self.parser.ast[index] else { unreachable!() };
+    fn function(&mut self, index: usize) {
+        let Node::Function { name_start, name_end, parameters_index, block_index } = self.parser.ast[index] else { unreachable!() };
         let Node::Parameters { return_type, .. } = self.parser.ast[parameters_index].clone() else { unreachable!() };
         let c_return_type = value_type_to_c_type(return_type);
 
@@ -302,6 +303,11 @@ impl CodeGenerator {
     fn parameters(&mut self, index: usize) {
         let Node::Parameters { input_list, .. } = self.parser.ast[index].clone() else { unreachable!() };
         self.emitter.emit("(");
+
+        if input_list.is_empty() {
+            self.emitter.emit("void");
+        }
+
         for (i, parameter) in input_list.iter().enumerate() {
             if i > 0 {
                 self.emitter.emit(", ");
@@ -313,6 +319,7 @@ impl CodeGenerator {
             let name = self.parser.get_text(parameter.name_start, parameter.name_end);
             self.emitter.emit(name);
         }
+
         self.emitter.emit(")");
     }
 }

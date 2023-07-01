@@ -81,7 +81,7 @@ pub struct Parameter {
 #[derive(Debug, Clone)]
 pub enum Node {
     Program {
-        block_index: usize,
+        function_indices: Arc<Vec<usize>>,
     },
     Block {
         statement_indices: Arc<Vec<usize>>,
@@ -164,8 +164,8 @@ pub enum Node {
     StatementExpression {
         expression_index: usize,
     },
-    // TODO: Function declarations probably shouldn't be statements, because declarations shouldn't be shadowed or nested.
-    StatementFunction {
+    // TODO: Ensure function declarations can't be shadowed or nested.
+    Function {
         name_start: usize,
         name_end: usize,
         parameters_index: usize,
@@ -254,14 +254,22 @@ impl Parser {
      * Rules
      */
 
-    // program ::= block
+    // program ::= {function}
     pub fn program(&mut self) -> usize {
         while self.check_token(TokenType::Newline) {
             self.next_token();
         }
 
-        let block_index = self.block(TokenType::Eof);
-        self.add_node(Node::Program { block_index })
+        let mut function_indices = Vec::new();
+
+        while !self.check_token(TokenType::Eof) {
+            function_indices.push(self.function());
+            self.newline();
+        }
+
+        self.match_token(TokenType::Eof);
+
+        self.add_node(Node::Program { function_indices: Arc::new(function_indices) })
     }
 
     // block :: {statement} terminator
@@ -277,6 +285,7 @@ impl Parser {
         self.add_node(Node::Block { statement_indices: Arc::new(statement_indices) })
     }
 
+    // TODO: Consider using semicolons to terminate lines, allowing newlines to be treated as whitespace?
     fn newline(&mut self) {
         if !self.check_token(TokenType::Newline) && !self.check_token(TokenType::Eof) {
             self.abort("Expected line to be terminated")
@@ -365,13 +374,6 @@ impl Parser {
                 expression_index,
             });
         }
-        // TODO: Make sure function names don't collide with others when C is generated. Maybe don't include C headers in the same file as the output, put all of the C code in a seperate file and then just import it's header in the main output code?
-        else if self.check_token(TokenType::Function) {
-            let function_node = self.function();
-            // TODO: Early return here doesn't align with how other statements are processed.
-            self.newline();
-            return function_node;
-        }
         // return ::= "return" expression
         else if self.check_token(TokenType::Return) {
             self.next_token();
@@ -390,6 +392,7 @@ impl Parser {
         self.add_node(node.expect("Failed to create node from statement"))
     }
 
+    // TODO: Make sure function names don't collide with others when C is generated. Maybe don't include C headers in the same file as the output, put all of the C code in a seperate file and then just import it's header in the main output code?
     // "function" ident parameters "do" block "endfunction"
     fn function(&mut self) -> usize {
         self.next_token();
@@ -402,7 +405,7 @@ impl Parser {
         self.newline();
         let block_index = self.block(TokenType::EndFunction);
 
-        self.add_node(Node::StatementFunction {
+        self.add_node(Node::Function {
             name_start,
             name_end,
             parameters_index,
