@@ -8,4 +8,13 @@ function printTwo(a: float, b: float): void do
     print b
 endfunction
 
+function max(a:float, b:float):float do
+    if a > b then
+        return a
+    endif
+
+    return b
+endfunction
+
 printThree(1.5, 2.0 + 3.0, 4.0 / 0.33)
+print max(1.0, 2.0)

@@ -1,7 +1,5 @@
 use crate::{parser::*, emitter::*};
 
-const OUTPUT_FILE: &str = "out.c";
-
 fn value_type_to_c_type(value_type: ValueType) -> &'static str {
     match value_type {
         ValueType::Int => "int",
@@ -24,10 +22,10 @@ impl CodeGenerator {
         }
     }
 
-    pub fn emit(&mut self) {
+    pub fn emit(&mut self, output_file: &str) {
         let program_index = self.parser.program();
         self.program(program_index);
-        self.emitter.write_file(OUTPUT_FILE).expect("Failed to write generated code to the output file");
+        self.emitter.write_file(output_file).expect("Failed to write generated code to the output file");
     }
 
     fn abort(&self, message: &str) {
@@ -179,6 +177,7 @@ impl CodeGenerator {
         let Node::PrimaryFloat { text_start, text_end } = self.parser.ast[index] else { unreachable!() };
         let text = self.parser.get_text(text_start, text_end);
         self.emitter.emit(text);
+        self.emitter.emit("f");
     }
 
     fn primary_bool(&mut self, index: usize) {
