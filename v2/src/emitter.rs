@@ -76,11 +76,7 @@ impl Emitter {
             "{}",
             self.emit_regions[EmitRegion::Prototype as usize]
         )?;
-        write!(
-            output,
-            "{}",
-            self.emit_regions[EmitRegion::Body as usize]
-        )?;
+        write!(output, "{}", self.emit_regions[EmitRegion::Body as usize])?;
 
         Ok(())
     }

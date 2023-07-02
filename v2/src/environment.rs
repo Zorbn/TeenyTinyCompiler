@@ -1,4 +1,4 @@
-use std::{collections::HashMap, cell::RefCell, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use crate::parser::ValueType;
 
@@ -33,7 +33,7 @@ impl Environment {
         return match &self.enclosing {
             Some(enclosing) => RefCell::borrow(enclosing).get_symbol_type(symbol),
             _ => None,
-        }
+        };
     }
 
     pub fn add_symbol(&mut self, symbol: &str, value_type: ValueType) {

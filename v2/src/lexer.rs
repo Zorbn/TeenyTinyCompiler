@@ -1,4 +1,4 @@
-use crate::error_reporting::get_line_number;
+use crate::error_reporting::report_error;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TokenType {
@@ -163,9 +163,7 @@ impl Lexer {
     }
 
     fn abort(&self, message: &str) {
-        let line_number = get_line_number(&self.source, self.current_position);
-        println!("Lexing error at line {line_number}! {message}");
-        std::process::exit(-1);
+        report_error(&self.source, message, self.current_position);
     }
 
     fn skip_whitespace(&mut self) {

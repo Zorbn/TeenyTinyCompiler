@@ -1,4 +1,4 @@
-use crate::{parser::*, emitter::*};
+use crate::{emitter::*, error_reporting::report_error, parser::*};
 
 fn value_type_to_c_type(value_type: ValueType) -> &'static str {
     match value_type {
@@ -28,15 +28,17 @@ impl CodeGenerator {
 
     pub fn emit(&mut self, program_index: usize, output_file: &str) {
         self.program(program_index);
-        self.emitter.write_file(output_file).expect("Failed to write generated code to the output file");
+        self.emitter
+            .write_file(output_file)
+            .expect("Failed to write generated code to the output file");
     }
 
-    fn abort(&self, message: &str) {
-        panic!("Code generation error! {message}");
+    fn abort(&self, message: &str, start: usize) {
+        report_error(self.parser.lexer.get_source(), message, start)
     }
 
     fn program(&mut self, index: usize) {
-        let Node::Program { function_indices } = self.parser.ast[index].clone() else { unreachable!() };
+        let Node { node_type: NodeType::Program { function_indices }, .. } = self.parser.ast[index].clone() else { unreachable!() };
         self.emitter.set_region(EmitRegion::Preprocessor);
         self.emitter.emit_line("#define _CRT_SECURE_NO_WARNINGS");
         self.emitter.emit_line("#include <stdio.h>");
@@ -54,28 +56,36 @@ impl CodeGenerator {
     }
 
     fn block(&mut self, index: usize) {
-        let Node::Block { statement_indices } = self.parser.ast[index].clone() else { unreachable!() };
+        let Node { node_type: NodeType::Block { statement_indices }, .. } = self.parser.ast[index].clone() else { unreachable!() };
         self.emitter.emit_line("{");
         self.emitter.indent();
 
         for statement_index in statement_indices.iter() {
-            match &self.parser.ast[*statement_index] {
-                Node::StatementPrintString { .. } => self.statement_print_string(*statement_index),
-                Node::StatementPrintExpression { .. } => {
+            let statement_node = &self.parser.ast[*statement_index];
+            match statement_node.node_type {
+                NodeType::StatementPrintString { .. } => {
+                    self.statement_print_string(*statement_index)
+                }
+                NodeType::StatementPrintExpression { .. } => {
                     self.statement_print_expression(*statement_index)
                 }
-                Node::StatementIf { .. } => self.statement_if(*statement_index),
-                Node::StatementWhile { .. } => self.statement_while(*statement_index),
-                Node::StatementVariableDeclaration { .. } => {
+                NodeType::StatementIf { .. } => self.statement_if(*statement_index),
+                NodeType::StatementWhile { .. } => self.statement_while(*statement_index),
+                NodeType::StatementVariableDeclaration { .. } => {
                     self.statement_variable_declaration(*statement_index)
                 }
-                Node::StatementVariableAssignment { .. } => {
+                NodeType::StatementVariableAssignment { .. } => {
                     self.statement_variable_assignment(*statement_index)
                 }
-                Node::StatementReturnValue { .. } => self.statement_return_value(*statement_index),
-                Node::StatementReturn { .. } => self.statement_return(*statement_index),
-                Node::StatementExpression { .. } => self.statement_expression(*statement_index),
-                _ => self.abort("Encountered a non-statement node within a block"),
+                NodeType::StatementReturnValue { .. } => {
+                    self.statement_return_value(*statement_index)
+                }
+                NodeType::StatementReturn { .. } => self.statement_return(*statement_index),
+                NodeType::StatementExpression { .. } => self.statement_expression(*statement_index),
+                _ => self.abort(
+                    "Encountered a non-statement node within a block",
+                    statement_node.node_start,
+                ),
             }
         }
 
@@ -84,10 +94,10 @@ impl CodeGenerator {
     }
 
     fn expression(&mut self, index: usize) {
-        let Node::Expression {
+        let Node { node_type: NodeType::Expression {
             term_index,
             trailing_terms,
-        } = self.parser.ast[index].clone() else { unreachable!() };
+        }, .. } = self.parser.ast[index].clone() else { unreachable!() };
 
         self.term(term_index);
 
@@ -102,30 +112,30 @@ impl CodeGenerator {
     }
 
     fn string(&mut self, index: usize) {
-        let Node::String { text_start, text_end } = self.parser.ast[index] else { unreachable!() };
+        let Node { node_type: NodeType::String { text_start, text_end }, .. } = self.parser.ast[index] else { unreachable!() };
         let text = self.parser.get_text(text_start, text_end);
         self.emitter.emit(text);
     }
 
     fn statement_print_string(&mut self, index: usize) {
-        let Node::StatementPrintString { string_index } = self.parser.ast[index] else { unreachable!() };
+        let Node { node_type: NodeType::StatementPrintString { string_index }, .. } = self.parser.ast[index] else { unreachable!() };
         self.emitter.emit("printf(\"");
         self.string(string_index);
         self.emitter.emit_line("\\n\");");
     }
 
     fn statement_print_expression(&mut self, index: usize) {
-        let Node::StatementPrintExpression { expression_index } = self.parser.ast[index] else { unreachable!() };
+        let Node { node_type: NodeType::StatementPrintExpression { expression_index }, .. } = self.parser.ast[index] else { unreachable!() };
         self.emitter.emit("printf(\"%.2f\\n\", (float)(");
         self.expression(expression_index);
         self.emitter.emit_line("));");
     }
 
     fn term(&mut self, index: usize) {
-        let Node::Term {
+        let Node { node_type: NodeType::Term {
             unary_index,
             trailing_unaries,
-        } = self.parser.ast[index].clone() else { unreachable!() };
+        }, .. } = self.parser.ast[index].clone() else { unreachable!() };
 
         self.unary(unary_index);
 
@@ -140,57 +150,65 @@ impl CodeGenerator {
     }
 
     fn unary(&mut self, index: usize) {
-        let Node::Unary { op, call_index } = self.parser.ast[index] else { unreachable!() };
+        let Node { node_type: NodeType::Unary { op, call_index }, .. } = self.parser.ast[index] else { unreachable!() };
         match op {
             Some(UnaryOp::Plus) => self.emitter.emit("+"),
             Some(UnaryOp::Minus) => self.emitter.emit("-"),
             None => {}
         }
 
-        match self.parser.ast[call_index] {
-            Node::CallFunction { .. } => self.call_function(call_index),
-            Node::CallPrimary { .. } => self.call_primary(call_index),
-            _ => self.abort("Encountered a non-call node within a unary"),
+        let call_node = &self.parser.ast[call_index];
+        match call_node.node_type {
+            NodeType::CallFunction { .. } => self.call_function(call_index),
+            NodeType::CallPrimary { .. } => self.call_primary(call_index),
+            _ => self.abort(
+                "Encountered a non-call node within a unary",
+                call_node.node_start,
+            ),
         }
     }
 
     fn call_function(&mut self, index: usize) {
-        let Node::CallFunction {
+        let Node { node_type: NodeType::CallFunction {
             name_start,
             name_end,
             arguments_index,
-        } = self.parser.ast[index] else { unreachable!() };
+        }, .. } = self.parser.ast[index] else { unreachable!() };
         let function_name = self.parser.get_text(name_start, name_end);
         self.emitter.emit(function_name);
         self.arguments(arguments_index);
     }
 
     fn call_primary(&mut self, index: usize) {
-        let Node::CallPrimary { primary_index } = self.parser.ast[index] else { unreachable!() };
-        match &self.parser.ast[primary_index] {
-            Node::PrimaryInt { .. } => self.primary_int(primary_index),
-            Node::PrimaryFloat { .. } => self.primary_float(primary_index),
-            Node::PrimaryBool { .. } => self.primary_bool(primary_index),
-            Node::PrimaryIdent { .. } => self.primary_ident(primary_index),
-            _ => self.abort("Encountered a non-primary node within a call primary"),
+        let Node { node_type: NodeType::CallPrimary { primary_index }, .. } = self.parser.ast[index] else { unreachable!() };
+        let primary_node = &self.parser.ast[primary_index];
+        match primary_node.node_type {
+            NodeType::PrimaryInt { .. } => self.primary_int(primary_index),
+            NodeType::PrimaryFloat { .. } => self.primary_float(primary_index),
+            NodeType::PrimaryBool { .. } => self.primary_bool(primary_index),
+            NodeType::PrimaryIdent { .. } => self.primary_ident(primary_index),
+            _ => self.abort(
+                "Encountered a non-primary node within a call primary",
+                primary_node.node_start,
+            ),
         }
     }
 
     fn primary_int(&mut self, index: usize) {
-        let Node::PrimaryInt { text_start, text_end } = self.parser.ast[index] else { unreachable!() };
+        let Node { node_type: NodeType::PrimaryInt { text_start, text_end }, .. } = self.parser.ast[index] else { unreachable!() };
         let text = self.parser.get_text(text_start, text_end);
         self.emitter.emit(text);
     }
 
     fn primary_float(&mut self, index: usize) {
-        let Node::PrimaryFloat { text_start, text_end } = self.parser.ast[index] else { unreachable!() };
+        let Node { node_type: NodeType::PrimaryFloat { text_start, text_end }, .. } = self.parser.ast[index] else { unreachable!() };
         let text = self.parser.get_text(text_start, text_end);
         self.emitter.emit(text);
         self.emitter.emit("f");
     }
 
     fn primary_bool(&mut self, index: usize) {
-        let Node::PrimaryBool { is_true } = self.parser.ast[index] else { unreachable!() };
+        let Node { node_type: NodeType::PrimaryBool { is_true }, .. } = self.parser.ast[index] else { unreachable!() };
         self.emitter.emit(match is_true {
             true => "true",
             false => "false",
@@ -198,13 +216,13 @@ impl CodeGenerator {
     }
 
     fn primary_ident(&mut self, index: usize) {
-        let Node::PrimaryIdent { text_start, text_end } = self.parser.ast[index] else { unreachable!() };
+        let Node { node_type: NodeType::PrimaryIdent { text_start, text_end }, .. } = self.parser.ast[index] else { unreachable!() };
         let text = self.parser.get_text(text_start, text_end);
         self.emitter.emit(text);
     }
 
     fn arguments(&mut self, index: usize) {
-        let Node::Arguments { expression_indices } = self.parser.ast[index].clone() else { unreachable!() };
+        let Node { node_type: NodeType::Arguments { expression_indices }, .. } = self.parser.ast[index].clone() else { unreachable!() };
         self.emitter.emit("(");
         for (i, expression_index) in expression_indices.iter().enumerate() {
             if i > 0 {
@@ -217,11 +235,11 @@ impl CodeGenerator {
     }
 
     fn comparison(&mut self, index: usize) {
-        let Node::Comparison {
+        let Node { node_type: NodeType::Comparison {
             left_expression_index,
             op,
             right_expression_index,
-        } = self.parser.ast[index] else { unreachable!() };
+        }, .. } = self.parser.ast[index] else { unreachable!() };
         self.expression(left_expression_index);
         self.emitter.emit(match op {
             ComparisonOp::EqEq => "==",
@@ -235,7 +253,7 @@ impl CodeGenerator {
     }
 
     fn statement_if(&mut self, index: usize) {
-        let Node::StatementIf { comparison_index, block_index } = self.parser.ast[index] else { unreachable!() };
+        let Node { node_type: NodeType::StatementIf { comparison_index, block_index }, .. } = self.parser.ast[index] else { unreachable!() };
         self.emitter.emit("if (");
         self.comparison(comparison_index);
         self.emitter.emit(") ");
@@ -243,7 +261,7 @@ impl CodeGenerator {
     }
 
     fn statement_while(&mut self, index: usize) {
-        let Node::StatementWhile { comparison_index, block_index } = self.parser.ast[index] else { unreachable!() };
+        let Node { node_type: NodeType::StatementWhile { comparison_index, block_index }, .. } = self.parser.ast[index] else { unreachable!() };
         self.emitter.emit("while (");
         self.comparison(comparison_index);
         self.emitter.emit(") ");
@@ -251,7 +269,7 @@ impl CodeGenerator {
     }
 
     fn statement_variable_declaration(&mut self, index: usize) {
-        let Node::StatementVariableDeclaration { name_start, name_end, value_type, expression_index } = self.parser.ast[index] else { unreachable!() };
+        let Node { node_type: NodeType::StatementVariableDeclaration { name_start, name_end, value_type, expression_index }, .. } = self.parser.ast[index] else { unreachable!() };
         let name = self.parser.get_text(name_start, name_end);
         let c_type = value_type_to_c_type(value_type);
         self.emitter.emit(c_type);
@@ -263,7 +281,7 @@ impl CodeGenerator {
     }
 
     fn statement_variable_assignment(&mut self, index: usize) {
-        let Node::StatementVariableAssignment { name_start, name_end, expression_index } = self.parser.ast[index] else { unreachable!() };
+        let Node { node_type: NodeType::StatementVariableAssignment { name_start, name_end, expression_index }, .. } = self.parser.ast[index] else { unreachable!() };
         let name = self.parser.get_text(name_start, name_end);
         self.emitter.emit(name);
         self.emitter.emit(" = ");
@@ -272,7 +290,7 @@ impl CodeGenerator {
     }
 
     fn statement_return_value(&mut self, index: usize) {
-        let Node::StatementReturnValue { expression_index } = self.parser.ast[index] else { unreachable!() };
+        let Node { node_type: NodeType::StatementReturnValue { expression_index }, .. } = self.parser.ast[index] else { unreachable!() };
         self.emitter.emit("return ");
         self.expression(expression_index);
         self.emitter.emit_line(";");
@@ -283,34 +301,36 @@ impl CodeGenerator {
     }
 
     fn statement_expression(&mut self, index: usize) {
-        let Node::StatementExpression { expression_index } = self.parser.ast[index] else { unreachable!() };
+        let Node { node_type: NodeType::StatementExpression { expression_index }, .. } = self.parser.ast[index] else { unreachable!() };
         self.expression(expression_index);
         self.emitter.emit_line(";");
     }
 
     fn function(&mut self, index: usize) {
-        let Node::Function { name_start, name_end, parameters_index, block_index } = self.parser.ast[index] else { unreachable!() };
-        let Node::Parameters { return_type, .. } = self.parser.ast[parameters_index].clone() else { unreachable!() };
+        let Node { node_type: NodeType::Function { name_start, name_end, parameters_index, block_index }, .. } = self.parser.ast[index] else { unreachable!() };
+        let Node { node_type: NodeType::Parameters { return_type, .. }, .. } = self.parser.ast[parameters_index].clone() else { unreachable!() };
         let c_return_type = return_type_to_c_type(return_type);
 
         self.emitter.set_region(EmitRegion::Prototype);
         self.emitter.emit(c_return_type);
         self.emitter.emit(" ");
-        self.emitter.emit(self.parser.get_text(name_start, name_end));
+        self.emitter
+            .emit(self.parser.get_text(name_start, name_end));
         self.parameters(parameters_index);
         self.emitter.emit_line(";");
 
         self.emitter.set_region(EmitRegion::Body);
         self.emitter.emit(c_return_type);
         self.emitter.emit(" ");
-        self.emitter.emit(self.parser.get_text(name_start, name_end));
+        self.emitter
+            .emit(self.parser.get_text(name_start, name_end));
         self.parameters(parameters_index);
         self.emitter.emit(" ");
         self.block(block_index);
     }
 
     fn parameters(&mut self, index: usize) {
-        let Node::Parameters { input_list, .. } = self.parser.ast[index].clone() else { unreachable!() };
+        let Node { node_type: NodeType::Parameters { input_list, .. }, .. } = self.parser.ast[index].clone() else { unreachable!() };
         self.emitter.emit("(");
 
         if input_list.is_empty() {
@@ -325,7 +345,9 @@ impl CodeGenerator {
             let c_type = value_type_to_c_type(parameter.value_type);
             self.emitter.emit(c_type);
             self.emitter.emit(" ");
-            let name = self.parser.get_text(parameter.name_start, parameter.name_end);
+            let name = self
+                .parser
+                .get_text(parameter.name_start, parameter.name_end);
             self.emitter.emit(name);
         }
 

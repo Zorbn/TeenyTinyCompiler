@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
-use crate::{lexer::{Lexer, Token, TokenType}, error_reporting::get_line_number};
+use crate::{
+    error_reporting::report_error,
+    lexer::{Lexer, Token, TokenType},
+};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ValueType {
@@ -92,7 +95,7 @@ pub struct Parameter {
 }
 
 #[derive(Debug, Clone)]
-pub enum Node {
+pub enum NodeType {
     Program {
         function_indices: Arc<Vec<usize>>,
     },
@@ -174,8 +177,7 @@ pub enum Node {
     StatementReturnValue {
         expression_index: usize,
     },
-    StatementReturn{
-    },
+    StatementReturn {},
     StatementExpression {
         expression_index: usize,
     },
@@ -192,14 +194,15 @@ pub enum Node {
     },
 }
 
-// TODO: Determine how to organize the following operations:
-// - Type checking
-// - Check if all used variables/functions were declared first
-// - Emit code based on resulting AST from the parser
+#[derive(Debug, Clone)]
+pub struct Node {
+    pub node_type: NodeType,
+    pub node_start: usize,
+}
 
 pub struct Parser {
     pub ast: Vec<Node>,
-    lexer: Lexer,
+    pub lexer: Lexer,
     current_token: Token,
     peek_token: Token,
 }
@@ -237,9 +240,11 @@ impl Parser {
     }
 
     fn abort(&self, message: &str) {
-        let line_number = get_line_number(self.lexer.get_source(), self.current_token.text_start);
-        println!("Parsing error at line {line_number}! {message}");
-        std::process::exit(-2);
+        report_error(
+            self.lexer.get_source(),
+            message,
+            self.current_token.text_start,
+        );
     }
 
     fn check_token(&self, token_type: TokenType) -> bool {
@@ -273,6 +278,8 @@ impl Parser {
 
     // program ::= {function}
     pub fn program(&mut self) -> usize {
+        let text_start = self.current_token.text_start;
+
         while self.check_token(TokenType::Newline) {
             self.next_token();
         }
@@ -286,11 +293,17 @@ impl Parser {
 
         self.match_token(TokenType::Eof);
 
-        self.add_node(Node::Program { function_indices: Arc::new(function_indices) })
+        self.add_node(Node {
+            node_type: NodeType::Program {
+                function_indices: Arc::new(function_indices),
+            },
+            node_start: text_start,
+        })
     }
 
     // block :: {statement} terminator
     fn block(&mut self, terminator: TokenType) -> usize {
+        let text_start = self.current_token.text_start;
         let mut statement_indices = Vec::new();
 
         while !self.check_token(terminator) {
@@ -299,7 +312,12 @@ impl Parser {
 
         self.match_token(terminator);
 
-        self.add_node(Node::Block { statement_indices: Arc::new(statement_indices) })
+        self.add_node(Node {
+            node_type: NodeType::Block {
+                statement_indices: Arc::new(statement_indices),
+            },
+            node_start: text_start,
+        })
     }
 
     // TODO: Consider using semicolons to terminate lines, allowing newlines to be treated as whitespace?
@@ -314,22 +332,27 @@ impl Parser {
     }
 
     fn statement(&mut self) -> usize {
-        let node;
+        let text_start = self.current_token.text_start;
+        let node_type;
 
         // "print" (expression | string)
         if self.check_token(TokenType::Print) {
             self.next_token();
 
             if self.check_token(TokenType::String) {
-                let string_index = self.add_node(Node::String {
-                    text_start: self.current_token.text_start,
-                    text_end: self.current_token.text_end,
+                let string_start = self.current_token.text_start;
+                let string_index = self.add_node(Node {
+                    node_type: NodeType::String {
+                        text_start: string_start,
+                        text_end: self.current_token.text_end,
+                    },
+                    node_start: string_start,
                 });
-                node = Some(Node::StatementPrintString { string_index });
+                node_type = Some(NodeType::StatementPrintString { string_index });
                 self.next_token();
             } else {
                 let expression_index = self.expression();
-                node = Some(Node::StatementPrintExpression { expression_index });
+                node_type = Some(NodeType::StatementPrintExpression { expression_index });
             }
         }
         // "if" comparison "then" newline block "endif" newline
@@ -340,7 +363,7 @@ impl Parser {
             self.newline();
             let block_index = self.block(TokenType::EndIf);
 
-            node = Some(Node::StatementIf {
+            node_type = Some(NodeType::StatementIf {
                 comparison_index,
                 block_index,
             });
@@ -353,7 +376,7 @@ impl Parser {
             self.newline();
             let block_index = self.block(TokenType::EndWhile);
 
-            node = Some(Node::StatementWhile {
+            node_type = Some(NodeType::StatementWhile {
                 comparison_index,
                 block_index,
             });
@@ -370,7 +393,7 @@ impl Parser {
             self.match_token(TokenType::Eq);
             let expression_index = self.expression();
 
-            node = Some(Node::StatementVariableDeclaration {
+            node_type = Some(NodeType::StatementVariableDeclaration {
                 name_start,
                 name_end,
                 value_type,
@@ -385,7 +408,7 @@ impl Parser {
             self.match_token(TokenType::Eq);
             let expression_index = self.expression();
 
-            node = Some(Node::StatementVariableAssignment {
+            node_type = Some(NodeType::StatementVariableAssignment {
                 name_start,
                 name_end,
                 expression_index,
@@ -396,26 +419,30 @@ impl Parser {
             self.next_token();
 
             if self.check_token(TokenType::Newline) {
-                node = Some(Node::StatementReturn{});
+                node_type = Some(NodeType::StatementReturn {});
             } else {
                 let expression_index = self.expression();
-                node = Some(Node::StatementReturnValue { expression_index });
+                node_type = Some(NodeType::StatementReturnValue { expression_index });
             }
         }
         // expression
         else {
             let expression_index = self.expression();
 
-            node = Some(Node::StatementExpression { expression_index });
+            node_type = Some(NodeType::StatementExpression { expression_index });
         }
 
         self.newline();
-        self.add_node(node.expect("Failed to create node from statement"))
+        self.add_node(Node {
+            node_type: node_type.expect("Failed to create node from statement"),
+            node_start: text_start,
+        })
     }
 
     // TODO: Make sure function names don't collide with others when C is generated. Maybe don't include C headers in the same file as the output, put all of the C code in a seperate file and then just import it's header in the main output code?
     // "function" ident parameters "do" block "endfunction"
     fn function(&mut self) -> usize {
+        let text_start = self.current_token.text_start;
         self.next_token();
 
         let name_start = self.current_token.text_start;
@@ -426,16 +453,20 @@ impl Parser {
         self.newline();
         let block_index = self.block(TokenType::EndFunction);
 
-        self.add_node(Node::Function {
-            name_start,
-            name_end,
-            parameters_index,
-            block_index,
+        self.add_node(Node {
+            node_type: NodeType::Function {
+                name_start,
+                name_end,
+                parameters_index,
+                block_index,
+            },
+            node_start: text_start,
         })
     }
 
     // parameters ::= "(" ("," ident ":" type)* ")" ":" type
     fn parameters(&mut self) -> usize {
+        let text_start = self.current_token.text_start;
         self.match_token(TokenType::LParen);
 
         let mut list = Vec::new();
@@ -463,11 +494,18 @@ impl Parser {
         let return_type = ReturnType(token_type_to_value_type(self.current_token.token_type));
         self.next_token();
 
-        self.add_node(Node::Parameters { input_list: Arc::new(list), return_type })
+        self.add_node(Node {
+            node_type: NodeType::Parameters {
+                input_list: Arc::new(list),
+                return_type,
+            },
+            node_start: text_start,
+        })
     }
 
     // arguments ::= "(" ("," expression)* ")"
     fn arguments(&mut self) -> usize {
+        let text_start = self.current_token.text_start;
         self.match_token(TokenType::LParen);
 
         let mut expression_indices = Vec::new();
@@ -481,17 +519,24 @@ impl Parser {
 
         self.match_token(TokenType::RParen);
 
-        self.add_node(Node::Arguments { expression_indices: Arc::new(expression_indices) })
+        self.add_node(Node {
+            node_type: NodeType::Arguments {
+                expression_indices: Arc::new(expression_indices),
+            },
+            node_start: text_start,
+        })
     }
 
     // comparison ::= expression ("==" | "!=" | ">" | ">=" | "<" | "<=") expression
     fn comparison(&mut self) -> usize {
+        let text_start = self.current_token.text_start;
         let left_expression_index = self.expression();
 
         let op = match token_type_to_comparison_op(self.current_token.token_type) {
             Some(op) => op,
             None => {
-                let current_token_string = self.get_text(self.current_token.text_start, self.current_token.text_end);
+                let current_token_string =
+                    self.get_text(self.current_token.text_start, self.current_token.text_end);
                 self.abort(&format!(
                     "Expected comparsion operator at: \"{}\"",
                     current_token_string
@@ -503,15 +548,19 @@ impl Parser {
 
         let right_expression_index = self.expression();
 
-        self.add_node(Node::Comparison {
-            left_expression_index,
-            op,
-            right_expression_index,
+        self.add_node(Node {
+            node_type: NodeType::Comparison {
+                left_expression_index,
+                op,
+                right_expression_index,
+            },
+            node_start: text_start,
         })
     }
 
     // expression ::= term {("-" | "+") term}
     fn expression(&mut self) -> usize {
+        let text_start = self.current_token.text_start;
         let term_index = self.term();
         let mut trailing_terms = Vec::new();
 
@@ -528,14 +577,18 @@ impl Parser {
             trailing_terms.push(TrailingTerm { op, term_index })
         }
 
-        self.add_node(Node::Expression {
-            term_index,
-            trailing_terms: Arc::new(trailing_terms),
+        self.add_node(Node {
+            node_type: NodeType::Expression {
+                term_index,
+                trailing_terms: Arc::new(trailing_terms),
+            },
+            node_start: text_start,
         })
     }
 
     // term ::= unary {("/" | "*") unary}
     fn term(&mut self) -> usize {
+        let text_start = self.current_token.text_start;
         let unary_index = self.unary();
         let mut trailing_unaries = Vec::new();
 
@@ -552,14 +605,18 @@ impl Parser {
             trailing_unaries.push(TrailingUnary { op, unary_index })
         }
 
-        self.add_node(Node::Term {
-            unary_index,
-            trailing_unaries: Arc::new(trailing_unaries),
+        self.add_node(Node {
+            node_type: NodeType::Term {
+                unary_index,
+                trailing_unaries: Arc::new(trailing_unaries),
+            },
+            node_start: text_start,
         })
     }
 
     // unary ::= ["+" | "-"] call
     fn unary(&mut self) -> usize {
+        let text_start = self.current_token.text_start;
         let op = match self.current_token.token_type {
             TokenType::Plus => Some(UnaryOp::Plus),
             TokenType::Minus => Some(UnaryOp::Minus),
@@ -568,14 +625,21 @@ impl Parser {
 
         let call_index = self.call();
 
-        self.add_node(Node::Unary { op, call_index })
+        self.add_node(Node {
+            node_type: NodeType::Unary { op, call_index },
+            node_start: text_start,
+        })
     }
 
     // call ::= ident arguments | primary
     fn call(&mut self) -> usize {
+        let text_start = self.current_token.text_start;
         if !self.check_token(TokenType::Ident) || !self.check_peek(TokenType::LParen) {
             let primary_index = self.primary();
-            return self.add_node(Node::CallPrimary { primary_index });
+            return self.add_node(Node {
+                node_type: NodeType::CallPrimary { primary_index },
+                node_start: text_start,
+            });
         }
 
         let name_start = self.current_token.text_start;
@@ -584,36 +648,37 @@ impl Parser {
 
         let arguments_index = self.arguments();
 
-        self.add_node(Node::CallFunction {
-            name_start,
-            name_end,
-            arguments_index,
+        self.add_node(Node {
+            node_type: NodeType::CallFunction {
+                name_start,
+                name_end,
+                arguments_index,
+            },
+            node_start: text_start,
         })
     }
 
     // primary ::= int | float | bool | ident
     fn primary(&mut self) -> usize {
-        let index = match self.current_token.token_type {
-            TokenType::Int => self.add_node(Node::PrimaryInt {
-                text_start: self.current_token.text_start,
+        let text_start = self.current_token.text_start;
+        let node_type = match self.current_token.token_type {
+            TokenType::Int => NodeType::PrimaryInt {
+                text_start,
                 text_end: self.current_token.text_end,
-            }),
-            TokenType::Float => self.add_node(Node::PrimaryFloat {
-                text_start: self.current_token.text_start,
+            },
+            TokenType::Float => NodeType::PrimaryFloat {
+                text_start,
                 text_end: self.current_token.text_end,
-            }),
-            TokenType::True => self.add_node(Node::PrimaryBool {
-                is_true: true,
-            }),
-            TokenType::False => self.add_node(Node::PrimaryBool {
-                is_true: false,
-            }),
-            TokenType::Ident => self.add_node(Node::PrimaryIdent {
-                text_start: self.current_token.text_start,
+            },
+            TokenType::True => NodeType::PrimaryBool { is_true: true },
+            TokenType::False => NodeType::PrimaryBool { is_true: false },
+            TokenType::Ident => NodeType::PrimaryIdent {
+                text_start,
                 text_end: self.current_token.text_end,
-            }),
+            },
             _ => {
-                let current_token_string = self.get_text(self.current_token.text_start, self.current_token.text_end);
+                let current_token_string =
+                    self.get_text(self.current_token.text_start, self.current_token.text_end);
                 self.abort(&format!("Unexpected token at \"{}\"", current_token_string));
                 unreachable!()
             }
@@ -621,6 +686,9 @@ impl Parser {
 
         self.next_token();
 
-        index
+        self.add_node(Node {
+            node_type,
+            node_start: text_start,
+        })
     }
 }
