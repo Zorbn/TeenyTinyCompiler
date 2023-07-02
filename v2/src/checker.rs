@@ -416,10 +416,17 @@ impl<'a> Checker<'a> {
     }
 
     fn register_function(&mut self, index: usize) {
-        let Node { node_type: NodeType::Function { name_start, name_end, parameters_index, .. }, .. } = self.parser.ast[index] else { unreachable!() };
+        let Node { node_type: NodeType::Function { name_start, name_end, parameters_index, .. }, node_start } = self.parser.ast[index] else { unreachable!() };
         let Node { node_type: NodeType::Parameters { input_list, return_type }, .. } = self.parser.ast[parameters_index].clone() else { unreachable!() };
 
         let name = self.parser.get_text(name_start, name_end);
+        if self.function_declarations.contains_key(name) {
+            self.abort(
+                &format!("Function already declared \"{}\"", name),
+                node_start,
+            );
+        }
+
         let mut parameter_types = Vec::new();
 
         for parameter in input_list.iter() {

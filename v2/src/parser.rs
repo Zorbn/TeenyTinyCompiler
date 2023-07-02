@@ -181,7 +181,6 @@ pub enum NodeType {
     StatementExpression {
         expression_index: usize,
     },
-    // TODO: Ensure function declarations can't be shadowed or nested.
     Function {
         name_start: usize,
         name_end: usize,

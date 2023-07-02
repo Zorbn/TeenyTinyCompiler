@@ -297,7 +297,7 @@ impl CodeGenerator {
     }
 
     fn statement_return(&mut self, _index: usize) {
-        self.emitter.emit("return;");
+        self.emitter.emit_line("return;");
     }
 
     fn statement_expression(&mut self, index: usize) {
