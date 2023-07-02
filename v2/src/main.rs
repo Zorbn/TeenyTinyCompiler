@@ -1,11 +1,15 @@
+mod checker;
 mod code_generator;
 mod emitter;
+mod environment;
 mod lexer;
 mod parser;
 
 use code_generator::CodeGenerator;
 use lexer::Lexer;
 use parser::Parser;
+
+use crate::checker::Checker;
 
 const CC: &str = "clang";
 const CC_FLAGS: [&str; 2] = ["-std=c99", "-O3"];
@@ -26,8 +30,12 @@ fn main() {
 
     let file_bytes = std::fs::read(&args[1]).unwrap();
     let lexer = Lexer::new(file_bytes);
-    let parser = Parser::new(lexer);
-    let mut code_generator = CodeGenerator::new(parser);
+    let mut parser = Parser::new(lexer);
+    let program_index = parser.program();
+
+    println!("Checking code...");
+    let mut checker = Checker::new(&parser);
+    checker.check(program_index);
 
     if std::fs::create_dir_all(OUTPUT_DIR).is_err() {
         abort("Couldn't create output directory!", -2)
@@ -35,7 +43,8 @@ fn main() {
 
     let output_src_path = format!("{}/{}", OUTPUT_DIR, OUTPUT_SRC);
     println!("Emitting code...");
-    code_generator.emit(&output_src_path);
+    let mut code_generator = CodeGenerator::new(parser);
+    code_generator.emit(program_index, &output_src_path);
 
     let output_exe_extension = if cfg!(target_os = "windows") {
         ".exe"

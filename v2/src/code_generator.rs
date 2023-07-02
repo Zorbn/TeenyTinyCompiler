@@ -22,8 +22,7 @@ impl CodeGenerator {
         }
     }
 
-    pub fn emit(&mut self, output_file: &str) {
-        let program_index = self.parser.program();
+    pub fn emit(&mut self, program_index: usize, output_file: &str) {
         self.program(program_index);
         self.emitter.write_file(output_file).expect("Failed to write generated code to the output file");
     }
