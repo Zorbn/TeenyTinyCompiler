@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::lexer::{Lexer, Token, TokenType};
+use crate::{lexer::{Lexer, Token, TokenType}, error_reporting::get_line_number};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ValueType {
@@ -237,7 +237,9 @@ impl Parser {
     }
 
     fn abort(&self, message: &str) {
-        panic!("Parsing error! {message}");
+        let line_number = get_line_number(self.lexer.get_source(), self.current_token.text_start);
+        println!("Parsing error at line {line_number}! {message}");
+        std::process::exit(-2);
     }
 
     fn check_token(&self, token_type: TokenType) -> bool {

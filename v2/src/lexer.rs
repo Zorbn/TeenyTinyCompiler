@@ -1,3 +1,5 @@
+use crate::error_reporting::get_line_number;
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TokenType {
     Eof,
@@ -161,7 +163,9 @@ impl Lexer {
     }
 
     fn abort(&self, message: &str) {
-        panic!("Lexing error! {message}");
+        let line_number = get_line_number(&self.source, self.current_position);
+        println!("Lexing error at line {line_number}! {message}");
+        std::process::exit(-1);
     }
 
     fn skip_whitespace(&mut self) {
@@ -307,7 +311,7 @@ impl Lexer {
         }
 
         self.abort(&format!(
-            "Unknown token: {}",
+            "Unknown token \"{}\"",
             // TODO: Don't crash here.
             char::from_u32(self.current_char as u32)
                 .expect("Unknown token is not a valid character")
