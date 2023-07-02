@@ -9,6 +9,10 @@ fn value_type_to_c_type(value_type: ValueType) -> &'static str {
     }
 }
 
+fn return_type_to_c_type(return_type: ReturnType) -> &'static str {
+    value_type_to_c_type(return_type.to_value_type())
+}
+
 pub struct CodeGenerator {
     parser: Parser,
     emitter: Emitter,
@@ -68,6 +72,7 @@ impl CodeGenerator {
                 Node::StatementVariableAssignment { .. } => {
                     self.statement_variable_assignment(*statement_index)
                 }
+                Node::StatementReturnValue { .. } => self.statement_return_value(*statement_index),
                 Node::StatementReturn { .. } => self.statement_return(*statement_index),
                 Node::StatementExpression { .. } => self.statement_expression(*statement_index),
                 _ => self.abort("Encountered a non-statement node within a block"),
@@ -266,11 +271,15 @@ impl CodeGenerator {
         self.emitter.emit_line(";");
     }
 
-    fn statement_return(&mut self, index: usize) {
-        let Node::StatementReturn { expression_index } = self.parser.ast[index] else { unreachable!() };
+    fn statement_return_value(&mut self, index: usize) {
+        let Node::StatementReturnValue { expression_index } = self.parser.ast[index] else { unreachable!() };
         self.emitter.emit("return ");
         self.expression(expression_index);
         self.emitter.emit_line(";");
+    }
+
+    fn statement_return(&mut self, _index: usize) {
+        self.emitter.emit("return;");
     }
 
     fn statement_expression(&mut self, index: usize) {
@@ -282,7 +291,7 @@ impl CodeGenerator {
     fn function(&mut self, index: usize) {
         let Node::Function { name_start, name_end, parameters_index, block_index } = self.parser.ast[index] else { unreachable!() };
         let Node::Parameters { return_type, .. } = self.parser.ast[parameters_index].clone() else { unreachable!() };
-        let c_return_type = value_type_to_c_type(return_type);
+        let c_return_type = return_type_to_c_type(return_type);
 
         self.emitter.set_region(EmitRegion::Prototype);
         self.emitter.emit(c_return_type);

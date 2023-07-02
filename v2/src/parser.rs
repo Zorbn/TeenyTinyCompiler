@@ -2,12 +2,25 @@ use std::sync::Arc;
 
 use crate::lexer::{Lexer, Token, TokenType};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ValueType {
     Void,
     Int,
     Float,
     Bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ReturnType(ValueType);
+
+impl ReturnType {
+    pub fn from(value_type: ValueType) -> ReturnType {
+        ReturnType(value_type)
+    }
+
+    pub fn to_value_type(self) -> ValueType {
+        self.0
+    }
 }
 
 fn token_type_to_value_type(token_type: TokenType) -> ValueType {
@@ -158,8 +171,10 @@ pub enum Node {
         name_end: usize,
         expression_index: usize,
     },
-    StatementReturn {
+    StatementReturnValue {
         expression_index: usize,
+    },
+    StatementReturn{
     },
     StatementExpression {
         expression_index: usize,
@@ -173,7 +188,7 @@ pub enum Node {
     },
     Parameters {
         input_list: Arc<Vec<Parameter>>,
-        return_type: ValueType,
+        return_type: ReturnType,
     },
 }
 
@@ -374,12 +389,16 @@ impl Parser {
                 expression_index,
             });
         }
-        // return ::= "return" expression
+        // return ::= "return" [expression]
         else if self.check_token(TokenType::Return) {
             self.next_token();
-            let expression_index = self.expression();
 
-            node = Some(Node::StatementReturn { expression_index });
+            if self.check_token(TokenType::Newline) {
+                node = Some(Node::StatementReturn{});
+            } else {
+                let expression_index = self.expression();
+                node = Some(Node::StatementReturnValue { expression_index });
+            }
         }
         // expression
         else {
@@ -439,7 +458,7 @@ impl Parser {
 
         self.match_token(TokenType::RParen);
         self.match_token(TokenType::Colon);
-        let return_type = token_type_to_value_type(self.current_token.token_type);
+        let return_type = ReturnType(token_type_to_value_type(self.current_token.token_type));
         self.next_token();
 
         self.add_node(Node::Parameters { input_list: Arc::new(list), return_type })

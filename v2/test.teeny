@@ -1,4 +1,5 @@
 function myPrint(): void do
+    return
     print 6
 endfunction
 

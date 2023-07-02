@@ -1,3 +1,18 @@
+/*
+ * POSSIBLE IMPROVEMENTS:
+ * Add line numbers when reporting errors.
+ * Ability to declare extern c functions and call them.
+ * Add an else branch to the if statement, update does_return tracking accordingly.
+ * Logical and/or operators.
+ * For loop.
+ * Structures.
+ * Multiple files, importing.
+ * Heap allocations (w/ destructors?).
+ * Arrays.
+ * #line directives in generated code for better debugging: https://www.reddit.com/r/ProgrammingLanguages/comments/11i6kqh/what_could_go_wrong_making_a_vm_a_feeling_of_dread/
+ */
+
+
 mod checker;
 mod code_generator;
 mod emitter;
