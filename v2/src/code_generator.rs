@@ -1,5 +1,7 @@
 use crate::{emitter::*, error_reporting::report_error, parser::*};
 
+// TODO: Codegen structs.
+
 fn value_type_to_c_type(value_type: ValueType) -> &'static str {
     match value_type {
         ValueType::Int => "int",
@@ -38,7 +40,7 @@ impl CodeGenerator {
     }
 
     fn program(&mut self, index: usize) {
-        let Node { node_type: NodeType::Program { function_indices }, .. } = self.parser.ast[index].clone() else { unreachable!() };
+        let Node { node_type: NodeType::Program { function_indices, .. }, .. } = self.parser.ast[index].clone() else { unreachable!() };
         self.emitter.set_region(EmitRegion::Preprocessor);
         self.emitter.emit_line("#define _CRT_SECURE_NO_WARNINGS");
         self.emitter.emit_line("#include <stdio.h>");

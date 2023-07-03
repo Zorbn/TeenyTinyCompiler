@@ -2,6 +2,9 @@ use std::{collections::HashMap, sync::Arc};
 
 use crate::{environment::*, error_reporting::report_error, parser::*};
 
+// TODO: Typecheck structs: struct instance creations, usages, etc.
+// TODO: Make sure initialized structs have been declared, and declared structs haven't been declared already.
+
 #[derive(Clone)]
 struct FunctionDeclaration {
     parameter_types: Arc<Vec<ValueType>>,
@@ -67,7 +70,7 @@ impl<'a> Checker<'a> {
     }
 
     fn program(&mut self, index: usize) {
-        let Node { node_type: NodeType::Program { function_indices }, .. } = self.parser.ast[index].clone() else { unreachable!() };
+        let Node { node_type: NodeType::Program { function_indices, .. }, .. } = self.parser.ast[index].clone() else { unreachable!() };
 
         for function_index in function_indices.iter() {
             self.register_function(*function_index);

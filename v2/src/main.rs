@@ -1,6 +1,5 @@
 /*
  * Possible Improvements:
- * Add line numbers when reporting errors.
  * Arrays.
  * Structures.
  * Ability to declare extern c functions and call them.

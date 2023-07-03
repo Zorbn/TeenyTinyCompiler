@@ -31,6 +31,10 @@ pub enum TokenType {
     True,
     False,
 
+    Struct,
+    Of,
+    EndStruct,
+
     // TODO: Should types and values of types be different tokens?
     Void,
     Int,
@@ -96,6 +100,10 @@ fn check_if_keyword(token_text: &[u8]) -> Option<TokenType> {
         b"function" => Some(Function),
         b"do" => Some(Do),
         b"endfunction" => Some(EndFunction),
+
+        b"struct" => Some(Struct),
+        b"of" => Some(Of),
+        b"endstruct" => Some(EndStruct),
 
         b"true" => Some(True),
         b"false" => Some(False),

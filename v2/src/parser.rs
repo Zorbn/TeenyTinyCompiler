@@ -88,6 +88,13 @@ pub struct TrailingUnary {
 }
 
 #[derive(Debug, Clone, Copy)]
+pub struct Field {
+    pub name_start: usize,
+    pub name_end: usize,
+    pub value_type: ValueType,
+}
+
+#[derive(Debug, Clone, Copy)]
 pub struct Parameter {
     pub name_start: usize,
     pub name_end: usize,
@@ -98,6 +105,7 @@ pub struct Parameter {
 pub enum NodeType {
     Program {
         function_indices: Arc<Vec<usize>>,
+        struct_indices: Arc<Vec<usize>>,
     },
     Block {
         statement_indices: Arc<Vec<usize>>,
@@ -191,6 +199,11 @@ pub enum NodeType {
         input_list: Arc<Vec<Parameter>>,
         return_type: ReturnType,
     },
+    Struct {
+        name_start: usize,
+        name_end: usize,
+        field_list: Arc<Vec<Field>>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -275,7 +288,7 @@ impl Parser {
      * Rules
      */
 
-    // program ::= {function}
+    // program ::= {function | struct}
     pub fn program(&mut self) -> usize {
         let text_start = self.current_token.text_start;
 
@@ -284,9 +297,17 @@ impl Parser {
         }
 
         let mut function_indices = Vec::new();
+        let mut struct_indices = Vec::new();
 
         while !self.check_token(TokenType::Eof) {
-            function_indices.push(self.function());
+            if self.check_token(TokenType::Function) {
+                function_indices.push(self.function());
+            } else if self.check_token(TokenType::Struct) {
+                struct_indices.push(self.struct_node());
+            } else {
+                self.abort("Expected function or struct definition");
+            }
+
             self.newline();
         }
 
@@ -295,6 +316,7 @@ impl Parser {
         self.add_node(Node {
             node_type: NodeType::Program {
                 function_indices: Arc::new(function_indices),
+                struct_indices: Arc::new(struct_indices),
             },
             node_start: text_start,
         })
@@ -458,6 +480,46 @@ impl Parser {
                 name_end,
                 parameters_index,
                 block_index,
+            },
+            node_start: text_start,
+        })
+    }
+
+    fn struct_node(&mut self) -> usize {
+        let text_start = self.current_token.text_start;
+        self.next_token();
+
+        let name_start = self.current_token.text_start;
+        let name_end = self.current_token.text_end;
+        self.next_token();
+        self.match_token(TokenType::Of);
+        self.newline();
+
+        let mut field_list = Vec::new();
+
+        while !self.check_token(TokenType::EndStruct) {
+            let field_name_start = self.current_token.text_start;
+            let field_name_end = self.current_token.text_end;
+            self.next_token();
+            self.match_token(TokenType::Colon);
+            let value_type = token_type_to_value_type(self.current_token.token_type);
+            self.next_token();
+            self.newline();
+
+            field_list.push(Field {
+                name_start: field_name_start,
+                name_end: field_name_end,
+                value_type,
+            });
+        }
+
+        self.match_token(TokenType::EndStruct);
+
+        self.add_node(Node {
+            node_type: NodeType::Struct {
+                name_start,
+                name_end,
+                field_list: Arc::new(field_list),
             },
             node_start: text_start,
         })

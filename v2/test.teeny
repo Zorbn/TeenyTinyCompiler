@@ -3,6 +3,14 @@ function myPrint(): void do
     print 6
 endfunction
 
+struct myStruct of
+    a: int
+    b: float
+
+    c: int
+    d: float
+endstruct
+
 function main(): int do
     let a: int = 5
 
