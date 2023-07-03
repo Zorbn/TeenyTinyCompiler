@@ -35,11 +35,8 @@ pub enum TokenType {
     Of,
     EndStruct,
 
-    // TODO: Should types and values of types be different tokens?
-    Void,
     Int,
     Float,
-    Bool,
 
     // Operators
     Eq,
@@ -107,11 +104,6 @@ fn check_if_keyword(token_text: &[u8]) -> Option<TokenType> {
 
         b"true" => Some(True),
         b"false" => Some(False),
-
-        b"void" => Some(Void),
-        b"int" => Some(Int),
-        b"float" => Some(Float),
-        b"bool" => Some(Bool),
 
         _ => None,
     }

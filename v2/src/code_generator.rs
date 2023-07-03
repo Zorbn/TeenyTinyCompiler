@@ -2,17 +2,13 @@ use crate::{emitter::*, error_reporting::report_error, parser::*};
 
 // TODO: Codegen structs.
 
-fn value_type_to_c_type(value_type: ValueType) -> &'static str {
-    match value_type {
-        ValueType::Int => "int",
-        ValueType::Float => "float",
-        ValueType::Bool => "bool",
+fn primitive_type_to_c_type(primitive_type: PrimitiveType) -> &'static str {
+    match primitive_type {
+        PrimitiveType::Int => "int",
+        PrimitiveType::Float => "float",
+        PrimitiveType::Bool => "bool",
         _ => "void",
     }
-}
-
-fn return_type_to_c_type(return_type: ReturnType) -> &'static str {
-    value_type_to_c_type(return_type.to_value_type())
 }
 
 pub struct CodeGenerator {
@@ -37,6 +33,13 @@ impl CodeGenerator {
 
     fn abort(&self, message: &str, start: usize) {
         report_error(self.parser.lexer.get_source(), message, start)
+    }
+
+    fn type_id_to_c_type(&self, type_id: usize) -> String {
+        match &self.parser.types[type_id] {
+            TypeDefinition::Primitive { primitive_type } => primitive_type_to_c_type(*primitive_type).into(),
+            TypeDefinition::Struct { name, .. } => name.into(),
+        }
     }
 
     fn program(&mut self, index: usize) {
@@ -271,10 +274,10 @@ impl CodeGenerator {
     }
 
     fn statement_variable_declaration(&mut self, index: usize) {
-        let Node { node_type: NodeType::StatementVariableDeclaration { name_start, name_end, value_type, expression_index }, .. } = self.parser.ast[index] else { unreachable!() };
+        let Node { node_type: NodeType::StatementVariableDeclaration { name_start, name_end, type_id, expression_index }, .. } = self.parser.ast[index] else { unreachable!() };
         let name = self.parser.get_text(name_start, name_end);
-        let c_type = value_type_to_c_type(value_type);
-        self.emitter.emit(c_type);
+        let c_type = self.type_id_to_c_type(type_id);
+        self.emitter.emit(&c_type);
         self.emitter.emit(" ");
         self.emitter.emit(name);
         self.emitter.emit(" = ");
@@ -310,11 +313,11 @@ impl CodeGenerator {
 
     fn function(&mut self, index: usize) {
         let Node { node_type: NodeType::Function { name_start, name_end, parameters_index, block_index }, .. } = self.parser.ast[index] else { unreachable!() };
-        let Node { node_type: NodeType::Parameters { return_type, .. }, .. } = self.parser.ast[parameters_index].clone() else { unreachable!() };
-        let c_return_type = return_type_to_c_type(return_type);
+        let Node { node_type: NodeType::Parameters { return_type_id, .. }, .. } = self.parser.ast[parameters_index].clone() else { unreachable!() };
+        let c_return_type = self.type_id_to_c_type(return_type_id);
 
         self.emitter.set_region(EmitRegion::Prototype);
-        self.emitter.emit(c_return_type);
+        self.emitter.emit(&c_return_type);
         self.emitter.emit(" ");
         self.emitter
             .emit(self.parser.get_text(name_start, name_end));
@@ -322,7 +325,7 @@ impl CodeGenerator {
         self.emitter.emit_line(";");
 
         self.emitter.set_region(EmitRegion::Body);
-        self.emitter.emit(c_return_type);
+        self.emitter.emit(&c_return_type);
         self.emitter.emit(" ");
         self.emitter
             .emit(self.parser.get_text(name_start, name_end));
@@ -344,8 +347,8 @@ impl CodeGenerator {
                 self.emitter.emit(", ");
             }
 
-            let c_type = value_type_to_c_type(parameter.value_type);
-            self.emitter.emit(c_type);
+            let c_type = self.type_id_to_c_type(parameter.type_id);
+            self.emitter.emit(&c_type);
             self.emitter.emit(" ");
             let name = self
                 .parser

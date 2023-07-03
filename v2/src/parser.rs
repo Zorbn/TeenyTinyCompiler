@@ -1,38 +1,30 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use crate::{
     error_reporting::report_error,
     lexer::{Lexer, Token, TokenType},
 };
 
+// TODO: Remove usages of "value type" now that that concept is being redone.
+// TODO: Create wrapper types for return_type and expression_type ids used in the checker?
+// TODO: The first few values of the parser.types list are the primitive types, with their indices being the primitive cast to a usize, is there a way to make that more obvious?
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum ValueType {
+pub enum PrimitiveType {
     Void,
     Int,
     Float,
     Bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct ReturnType(ValueType);
-
-impl ReturnType {
-    pub fn from(value_type: ValueType) -> ReturnType {
-        ReturnType(value_type)
-    }
-
-    pub fn to_value_type(self) -> ValueType {
-        self.0
-    }
-}
-
-fn token_type_to_value_type(token_type: TokenType) -> ValueType {
-    match token_type {
-        TokenType::Int => ValueType::Int,
-        TokenType::Float => ValueType::Float,
-        TokenType::Bool => ValueType::Bool,
-        _ => ValueType::Void,
-    }
+#[derive(Debug)]
+pub enum TypeDefinition {
+    Primitive {
+        primitive_type: PrimitiveType,
+    },
+    Struct {
+        name: String,
+        field_types: Vec<TypeDefinition>,
+    },
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -91,14 +83,14 @@ pub struct TrailingUnary {
 pub struct Field {
     pub name_start: usize,
     pub name_end: usize,
-    pub value_type: ValueType,
+    pub type_id: usize,
 }
 
 #[derive(Debug, Clone, Copy)]
 pub struct Parameter {
     pub name_start: usize,
     pub name_end: usize,
-    pub value_type: ValueType,
+    pub type_id: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -174,7 +166,7 @@ pub enum NodeType {
     StatementVariableDeclaration {
         name_start: usize,
         name_end: usize,
-        value_type: ValueType,
+        type_id: usize,
         expression_index: usize,
     },
     StatementVariableAssignment {
@@ -197,7 +189,7 @@ pub enum NodeType {
     },
     Parameters {
         input_list: Arc<Vec<Parameter>>,
-        return_type: ReturnType,
+        return_type_id: usize,
     },
     Struct {
         name_start: usize,
@@ -214,6 +206,8 @@ pub struct Node {
 
 pub struct Parser {
     pub ast: Vec<Node>,
+    pub type_ids: HashMap<String, usize>,
+    pub types: Vec<TypeDefinition>,
     pub lexer: Lexer,
     current_token: Token,
     peek_token: Token,
@@ -226,7 +220,37 @@ impl Parser {
             lexer,
             current_token: Token::from_single(0, TokenType::Eof),
             peek_token: Token::from_single(0, TokenType::Eof),
+            type_ids: HashMap::new(),
+            types: Vec::new(),
         };
+
+        parser.types.push(TypeDefinition::Primitive {
+            primitive_type: PrimitiveType::Void,
+        });
+        parser
+            .type_ids
+            .insert("void".into(), PrimitiveType::Void as usize);
+
+        parser.types.push(TypeDefinition::Primitive {
+            primitive_type: PrimitiveType::Int,
+        });
+        parser
+            .type_ids
+            .insert("int".into(), PrimitiveType::Int as usize);
+
+        parser.types.push(TypeDefinition::Primitive {
+            primitive_type: PrimitiveType::Float,
+        });
+        parser
+            .type_ids
+            .insert("float".into(), PrimitiveType::Float as usize);
+
+        parser.types.push(TypeDefinition::Primitive {
+            primitive_type: PrimitiveType::Bool,
+        });
+        parser
+            .type_ids
+            .insert("bool".into(), PrimitiveType::Bool as usize);
 
         parser.reset_tokens();
 
@@ -249,6 +273,11 @@ impl Parser {
     fn next_token(&mut self) {
         self.current_token = self.peek_token;
         self.peek_token = self.lexer.get_token();
+    }
+
+    fn get_token_type_id(&mut self) -> usize {
+        let text = self.get_text(self.current_token.text_start, self.current_token.text_end);
+        *self.type_ids.get(text).unwrap_or(&(PrimitiveType::Void as usize))
     }
 
     fn abort(&self, message: &str) {
@@ -409,7 +438,7 @@ impl Parser {
             let name_end = self.current_token.text_end;
             self.next_token();
             self.match_token(TokenType::Colon);
-            let value_type = token_type_to_value_type(self.current_token.token_type);
+            let type_id = self.get_token_type_id();
             self.next_token();
             self.match_token(TokenType::Eq);
             let expression_index = self.expression();
@@ -417,7 +446,7 @@ impl Parser {
             node_type = Some(NodeType::StatementVariableDeclaration {
                 name_start,
                 name_end,
-                value_type,
+                type_id,
                 expression_index,
             });
         }
@@ -502,14 +531,14 @@ impl Parser {
             let field_name_end = self.current_token.text_end;
             self.next_token();
             self.match_token(TokenType::Colon);
-            let value_type = token_type_to_value_type(self.current_token.token_type);
+            let type_id = self.get_token_type_id();
             self.next_token();
             self.newline();
 
             field_list.push(Field {
                 name_start: field_name_start,
                 name_end: field_name_end,
-                value_type,
+                type_id,
             });
         }
 
@@ -540,25 +569,25 @@ impl Parser {
             let name_end = self.current_token.text_end;
             self.next_token();
             self.match_token(TokenType::Colon);
-            let value_type = token_type_to_value_type(self.current_token.token_type);
+            let type_id = self.get_token_type_id();
             self.next_token();
 
             list.push(Parameter {
                 name_start,
                 name_end,
-                value_type,
+                type_id,
             });
         }
 
         self.match_token(TokenType::RParen);
         self.match_token(TokenType::Colon);
-        let return_type = ReturnType(token_type_to_value_type(self.current_token.token_type));
+        let return_type_id = self.get_token_type_id();
         self.next_token();
 
         self.add_node(Node {
             node_type: NodeType::Parameters {
                 input_list: Arc::new(list),
-                return_type,
+                return_type_id,
             },
             node_start: text_start,
         })

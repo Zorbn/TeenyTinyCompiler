@@ -7,8 +7,8 @@ use crate::{environment::*, error_reporting::report_error, parser::*};
 
 #[derive(Clone)]
 struct FunctionDeclaration {
-    parameter_types: Arc<Vec<ValueType>>,
-    return_type: ReturnType,
+    parameter_type_ids: Arc<Vec<usize>>,
+    return_type_id: usize,
 }
 
 pub struct Checker<'a> {
@@ -32,41 +32,23 @@ impl<'a> Checker<'a> {
         report_error(self.parser.lexer.get_source(), message, start)
     }
 
-    fn combine_value_type(
-        &self,
-        current_type: ValueType,
-        new_type: ValueType,
-        start: usize,
-    ) -> ValueType {
-        if current_type == ValueType::Void {
-            return new_type;
+    fn combine_type_ids(&self, current_type_id: usize, new_type_id: usize, start: usize) -> usize {
+        if current_type_id == PrimitiveType::Void as usize {
+            return new_type_id;
         }
 
-        if new_type == ValueType::Void || current_type == new_type {
-            return current_type;
+        if new_type_id == PrimitiveType::Void as usize || current_type_id == new_type_id {
+            return current_type_id;
         }
 
         self.abort(
             &format!(
                 "Cannot mix types, expected {:?} but got {:?}",
-                current_type, new_type
+                self.parser.types[current_type_id], self.parser.types[new_type_id]
             ),
             start,
         );
         unreachable!()
-    }
-
-    fn combine_return_type(
-        &self,
-        current_type: ReturnType,
-        new_type: ReturnType,
-        start: usize,
-    ) -> ReturnType {
-        ReturnType::from(self.combine_value_type(
-            current_type.to_value_type(),
-            new_type.to_value_type(),
-            start,
-        ))
     }
 
     fn program(&mut self, index: usize) {
@@ -82,12 +64,12 @@ impl<'a> Checker<'a> {
         }
     }
 
-    fn block(&mut self, index: usize, mut environment: EnvironmentRef) -> ReturnType {
+    fn block(&mut self, index: usize, mut environment: EnvironmentRef) -> usize {
         environment = new_environment_ref(Some(environment));
 
         let Node { node_type: NodeType::Block { statement_indices }, .. } = self.parser.ast[index].clone() else { unreachable!() };
 
-        let mut return_type = ReturnType::from(ValueType::Void);
+        let mut return_type_id = PrimitiveType::Void as usize;
 
         for statement_index in statement_indices.iter() {
             let statement_node = &self.parser.ast[*statement_index];
@@ -128,70 +110,67 @@ impl<'a> Checker<'a> {
                 }
             };
 
-            return_type = self.combine_return_type(
-                return_type,
+            return_type_id = self.combine_type_ids(
+                return_type_id,
                 statement_return_type,
                 statement_node.node_start,
             );
         }
 
-        return_type
+        return_type_id
     }
 
-    fn expression(&mut self, index: usize, environment: EnvironmentRef) -> ValueType {
+    fn expression(&mut self, index: usize, environment: EnvironmentRef) -> usize {
         let Node { node_type: NodeType::Expression {
             term_index,
             trailing_terms,
         }, node_start } = self.parser.ast[index].clone() else { unreachable!() };
 
-        let mut expression_type = self.term(term_index, environment.clone());
+        let mut expression_type_id = self.term(term_index, environment.clone());
 
         for trailing_term in trailing_terms.iter() {
-            let term_type = self.term(trailing_term.term_index, environment.clone());
-            expression_type = self.combine_value_type(expression_type, term_type, node_start);
+            let term_type_id = self.term(trailing_term.term_index, environment.clone());
+            expression_type_id =
+                self.combine_type_ids(expression_type_id, term_type_id, node_start);
         }
 
-        expression_type
+        expression_type_id
     }
 
     // fn string(&mut self, _index: usize) {
     // }
 
-    fn statement_print_string(&mut self, _index: usize) -> ReturnType {
+    fn statement_print_string(&mut self, _index: usize) -> usize {
         // let Node::StatementPrintString { string_index } = self.parser.ast[index] else { unreachable!() };
         // self.string(string_index);
 
-        ReturnType::from(ValueType::Void)
+        PrimitiveType::Void as usize
     }
 
-    fn statement_print_expression(
-        &mut self,
-        index: usize,
-        environment: EnvironmentRef,
-    ) -> ReturnType {
+    fn statement_print_expression(&mut self, index: usize, environment: EnvironmentRef) -> usize {
         let Node { node_type: NodeType::StatementPrintExpression { expression_index }, .. } = self.parser.ast[index] else { unreachable!() };
         self.expression(expression_index, environment);
 
-        ReturnType::from(ValueType::Void)
+        PrimitiveType::Void as usize
     }
 
-    fn term(&mut self, index: usize, environment: EnvironmentRef) -> ValueType {
+    fn term(&mut self, index: usize, environment: EnvironmentRef) -> usize {
         let Node { node_type: NodeType::Term {
             unary_index,
             trailing_unaries,
         }, node_start } = self.parser.ast[index].clone() else { unreachable!() };
 
-        let mut term_type = self.unary(unary_index, environment.clone());
+        let mut term_type_id = self.unary(unary_index, environment.clone());
 
         for trailing_unary in trailing_unaries.iter() {
-            let unary_type = self.unary(trailing_unary.unary_index, environment.clone());
-            term_type = self.combine_value_type(term_type, unary_type, node_start);
+            let unary_type_id = self.unary(trailing_unary.unary_index, environment.clone());
+            term_type_id = self.combine_type_ids(term_type_id, unary_type_id, node_start);
         }
 
-        term_type
+        term_type_id
     }
 
-    fn unary(&mut self, index: usize, environment: EnvironmentRef) -> ValueType {
+    fn unary(&mut self, index: usize, environment: EnvironmentRef) -> usize {
         let Node { node_type: NodeType::Unary { call_index, .. }, .. } = self.parser.ast[index] else { unreachable!() };
 
         let call_node = &self.parser.ast[call_index];
@@ -208,7 +187,7 @@ impl<'a> Checker<'a> {
         }
     }
 
-    fn call_function(&mut self, index: usize, environment: EnvironmentRef) -> ValueType {
+    fn call_function(&mut self, index: usize, environment: EnvironmentRef) -> usize {
         let Node { node_type: NodeType::CallFunction {
             name_start,
             name_end,
@@ -220,12 +199,12 @@ impl<'a> Checker<'a> {
             Some(declaration) => {
                 let declaration = declaration.clone();
 
-                if declaration.parameter_types.len() != expression_indices.len() {
+                if declaration.parameter_type_ids.len() != expression_indices.len() {
                     self.abort(
                         &format!(
                             "Function \"{}\" expected {} arguments but got {}",
                             function_name,
-                            declaration.parameter_types.len(),
+                            declaration.parameter_type_ids.len(),
                             expression_indices.len()
                         ),
                         node_start,
@@ -234,19 +213,20 @@ impl<'a> Checker<'a> {
 
                 // Check that argument types match parameter types.
                 for (parameter, expression_index) in declaration
-                    .parameter_types
+                    .parameter_type_ids
                     .iter()
                     .zip(expression_indices.iter())
                 {
-                    let expression_type = self.expression(*expression_index, environment.clone());
+                    let expression_type_id =
+                        self.expression(*expression_index, environment.clone());
 
-                    if *parameter != expression_type {
+                    if *parameter != expression_type_id {
                         self.abort(
                             &format!(
                                 "Function \"{}\" expected argument of type \"{:?}\" but got argument of type \"{:?}\"",
                                 function_name,
-                                *parameter,
-                                expression_type
+                                self.parser.types[*parameter],
+                                self.parser.types[expression_type_id],
                             ),
                             node_start,
                         );
@@ -261,12 +241,10 @@ impl<'a> Checker<'a> {
 
         // self.arguments(arguments_index);
 
-        self.function_declarations[function_name]
-            .return_type
-            .to_value_type()
+        self.function_declarations[function_name].return_type_id
     }
 
-    fn call_primary(&mut self, index: usize, environment: EnvironmentRef) -> ValueType {
+    fn call_primary(&mut self, index: usize, environment: EnvironmentRef) -> usize {
         let Node { node_type: NodeType::CallPrimary { primary_index }, .. } = self.parser.ast[index] else { unreachable!() };
         let primary_node = &self.parser.ast[primary_index];
         match primary_node.node_type {
@@ -284,24 +262,24 @@ impl<'a> Checker<'a> {
         }
     }
 
-    fn primary_int(&mut self, _index: usize) -> ValueType {
-        ValueType::Int
+    fn primary_int(&mut self, _index: usize) -> usize {
+        PrimitiveType::Int as usize
     }
 
-    fn primary_float(&mut self, _index: usize) -> ValueType {
-        ValueType::Float
+    fn primary_float(&mut self, _index: usize) -> usize {
+        PrimitiveType::Float as usize
     }
 
-    fn primary_bool(&mut self, _index: usize) -> ValueType {
-        ValueType::Bool
+    fn primary_bool(&mut self, _index: usize) -> usize {
+        PrimitiveType::Bool as usize
     }
 
-    fn primary_ident(&mut self, index: usize, environment: EnvironmentRef) -> ValueType {
+    fn primary_ident(&mut self, index: usize, environment: EnvironmentRef) -> usize {
         let Node { node_type: NodeType::PrimaryIdent { text_start, text_end }, node_start } = self.parser.ast[index] else { unreachable!() };
         let text = self.parser.get_text(text_start, text_end);
 
-        match environment.borrow().get_symbol_type(text) {
-            Some(value_type) => value_type,
+        match environment.borrow().get_symbol_type_id(text) {
+            Some(type_id) => type_id,
             None => {
                 self.abort(
                     &format!("Referencing undefined variable \"{}\"", text),
@@ -326,28 +304,28 @@ impl<'a> Checker<'a> {
         self.expression(right_expression_index, environment);
     }
 
-    fn statement_if(&mut self, index: usize, environment: EnvironmentRef) -> ReturnType {
+    fn statement_if(&mut self, index: usize, environment: EnvironmentRef) -> usize {
         let Node { node_type: NodeType::StatementIf { comparison_index, block_index }, .. } = self.parser.ast[index] else { unreachable!() };
         self.comparison(comparison_index, environment.clone());
         self.block(block_index, environment);
 
-        ReturnType::from(ValueType::Void)
+        PrimitiveType::Void as usize
     }
 
-    fn statement_while(&mut self, index: usize, environment: EnvironmentRef) -> ReturnType {
+    fn statement_while(&mut self, index: usize, environment: EnvironmentRef) -> usize {
         let Node { node_type: NodeType::StatementWhile { comparison_index, block_index }, .. } = self.parser.ast[index] else { unreachable!() };
         self.comparison(comparison_index, environment.clone());
         self.block(block_index, environment);
 
-        ReturnType::from(ValueType::Void)
+        PrimitiveType::Void as usize
     }
 
     fn statement_variable_declaration(
         &mut self,
         index: usize,
         environment: EnvironmentRef,
-    ) -> ReturnType {
-        let Node { node_type: NodeType::StatementVariableDeclaration { name_start, name_end, value_type, expression_index }, node_start } = self.parser.ast[index] else { unreachable!() };
+    ) -> usize {
+        let Node { node_type: NodeType::StatementVariableDeclaration { name_start, name_end, type_id, expression_index }, node_start } = self.parser.ast[index] else { unreachable!() };
         let name = self.parser.get_text(name_start, name_end);
         // TODO: This prevents shadowing, maybe it shouldn't?
         if environment.borrow().has_symbol(name) {
@@ -356,30 +334,30 @@ impl<'a> Checker<'a> {
                 node_start,
             );
         }
-        let expression_type = self.expression(expression_index, environment.clone());
-        if expression_type != value_type {
+        let expression_type_id = self.expression(expression_index, environment.clone());
+        if expression_type_id != type_id {
             self.abort(
                 &format!(
                     "Cannot assign value of type \"{:?}\" to variable of type \"{:?}\"",
-                    expression_type, value_type
+                    self.parser.types[expression_type_id], self.parser.types[type_id]
                 ),
                 node_start,
             );
         }
 
-        environment.borrow_mut().add_symbol(name, value_type);
+        environment.borrow_mut().add_symbol(name, type_id);
 
-        ReturnType::from(ValueType::Void)
+        PrimitiveType::Void as usize
     }
 
     fn statement_variable_assignment(
         &mut self,
         index: usize,
         environment: EnvironmentRef,
-    ) -> ReturnType {
+    ) -> usize {
         let Node { node_type: NodeType::StatementVariableAssignment { name_start, name_end, expression_index }, node_start } = self.parser.ast[index] else { unreachable!() };
         let name = self.parser.get_text(name_start, name_end);
-        let value_type = match environment.borrow().get_symbol_type(name) {
+        let type_id = match environment.borrow().get_symbol_type_id(name) {
             Some(value_type) => value_type,
             None => {
                 self.abort(&format!("Variable not declared \"{}\"", name), node_start);
@@ -387,40 +365,38 @@ impl<'a> Checker<'a> {
             }
         };
         let expression_type = self.expression(expression_index, environment);
-        if expression_type != value_type {
+        if expression_type != type_id {
             self.abort(
                 &format!(
                     "Cannot assign value of type \"{:?}\" to variable of type \"{:?}\"",
-                    expression_type, value_type
+                    expression_type, type_id
                 ),
                 node_start,
             );
         }
 
-        ReturnType::from(ValueType::Void)
+        PrimitiveType::Void as usize
     }
 
-    fn statement_return_value(&mut self, index: usize, environment: EnvironmentRef) -> ReturnType {
+    fn statement_return_value(&mut self, index: usize, environment: EnvironmentRef) -> usize {
         let Node { node_type: NodeType::StatementReturnValue { expression_index }, .. } = self.parser.ast[index] else { unreachable!() };
-        let expression_type = self.expression(expression_index, environment);
-
-        ReturnType::from(expression_type)
+        self.expression(expression_index, environment)
     }
 
-    fn statement_return(&mut self, _index: usize, _environment: EnvironmentRef) -> ReturnType {
-        ReturnType::from(ValueType::Void)
+    fn statement_return(&mut self, _index: usize, _environment: EnvironmentRef) -> usize {
+        PrimitiveType::Void as usize
     }
 
-    fn statement_expression(&mut self, index: usize, environment: EnvironmentRef) -> ReturnType {
+    fn statement_expression(&mut self, index: usize, environment: EnvironmentRef) -> usize {
         let Node { node_type: NodeType::StatementExpression { expression_index }, .. } = self.parser.ast[index] else { unreachable!() };
         self.expression(expression_index, environment);
 
-        ReturnType::from(ValueType::Void)
+        PrimitiveType::Void as usize
     }
 
     fn register_function(&mut self, index: usize) {
         let Node { node_type: NodeType::Function { name_start, name_end, parameters_index, .. }, node_start } = self.parser.ast[index] else { unreachable!() };
-        let Node { node_type: NodeType::Parameters { input_list, return_type }, .. } = self.parser.ast[parameters_index].clone() else { unreachable!() };
+        let Node { node_type: NodeType::Parameters { input_list, return_type_id }, .. } = self.parser.ast[parameters_index].clone() else { unreachable!() };
 
         let name = self.parser.get_text(name_start, name_end);
         if self.function_declarations.contains_key(name) {
@@ -430,28 +406,29 @@ impl<'a> Checker<'a> {
             );
         }
 
-        let mut parameter_types = Vec::new();
+        let mut parameter_type_ids = Vec::new();
 
         for parameter in input_list.iter() {
-            parameter_types.push(parameter.value_type);
+            parameter_type_ids.push(parameter.type_id);
         }
 
         self.function_declarations.insert(
             name.into(),
             FunctionDeclaration {
-                parameter_types: Arc::new(parameter_types),
-                return_type,
+                parameter_type_ids: Arc::new(parameter_type_ids),
+                return_type_id,
             },
         );
     }
 
     fn function(&mut self, index: usize, environment: EnvironmentRef) {
         let Node { node_type: NodeType::Function { parameters_index, block_index, .. }, node_start } = self.parser.ast[index] else { unreachable!() };
-        let Node { node_type: NodeType::Parameters { return_type, .. }, .. } = self.parser.ast[parameters_index].clone() else { unreachable!() };
+        let Node { node_type: NodeType::Parameters { return_type_id, .. }, .. } = self.parser.ast[parameters_index].clone() else { unreachable!() };
         self.parameters(parameters_index, environment.clone());
-        let block_return_type = self.block(block_index, environment);
-        if block_return_type != return_type {
-            self.abort(&format!("Cannot return a value of type \"{:?}\" from a function with a return type of \"{:?}\"", block_return_type, return_type), node_start);
+        let block_return_type_id = self.block(block_index, environment);
+        if block_return_type_id != return_type_id {
+            self.abort(&format!("Cannot return a value of type \"{:?}\" from a function with a return type of \"{:?}\"",
+                self.parser.types[block_return_type_id], self.parser.types[return_type_id]), node_start);
         }
     }
 
@@ -463,7 +440,7 @@ impl<'a> Checker<'a> {
                 .get_text(parameter.name_start, parameter.name_end);
             environment
                 .borrow_mut()
-                .add_symbol(name, parameter.value_type);
+                .add_symbol(name, parameter.type_id);
         }
     }
 }
