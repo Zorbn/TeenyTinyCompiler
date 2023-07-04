@@ -1,9 +1,9 @@
-function myPrint(): void do
+function myPrint(ms: MyStruct): void do
     return
     print 6
 endfunction
 
-struct myStruct of
+struct MyStruct of
     a: int
     b: float
 
@@ -20,7 +20,13 @@ function main(): int do
     endwhile
 
     print a
-    myPrint()
+    myPrint(MyStruct {
+        a: 5
+        b: 5.0
+
+        c: 6
+        d: 6.0
+    })
 
     return 0
 endfunction

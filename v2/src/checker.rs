@@ -252,6 +252,7 @@ impl<'a> Checker<'a> {
             NodeType::PrimaryFloat { .. } => self.primary_float(primary_index),
             NodeType::PrimaryBool { .. } => self.primary_bool(primary_index),
             NodeType::PrimaryIdent { .. } => self.primary_ident(primary_index, environment),
+            NodeType::PrimaryStruct { .. } => todo!(),
             _ => {
                 self.abort(
                     "Encountered a non-primary node within a call primary",

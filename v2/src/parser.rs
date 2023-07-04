@@ -21,9 +21,12 @@ pub enum TypeDefinition {
     Primitive {
         primitive_type: PrimitiveType,
     },
+    // TODO: Ensure struct names don't conflict with keywords in this language (maybe already covered?) or generated C code.
+    // TODO: Prevent recursive struct fields.
     Struct {
-        name: String,
-        field_types: Vec<TypeDefinition>,
+        name_start: usize,
+        name_end: usize,
+        field_list: Arc<Vec<Field>>,
     },
 }
 
@@ -93,6 +96,13 @@ pub struct Parameter {
     pub type_id: usize,
 }
 
+#[derive(Debug)]
+pub struct NamedArgument {
+    pub name_start: usize,
+    pub name_end: usize,
+    pub expression_index: usize,
+}
+
 #[derive(Debug, Clone)]
 pub enum NodeType {
     Program {
@@ -142,6 +152,11 @@ pub enum NodeType {
     },
     PrimaryBool {
         is_true: bool,
+    },
+    PrimaryStruct {
+        name_start: usize,
+        name_end: usize,
+        argument_list: Arc<Vec<NamedArgument>>,
     },
     PrimaryIdent {
         text_start: usize,
@@ -211,6 +226,7 @@ pub struct Parser {
     pub lexer: Lexer,
     current_token: Token,
     peek_token: Token,
+    is_skipping_nodes: bool,
 }
 
 impl Parser {
@@ -222,6 +238,7 @@ impl Parser {
             peek_token: Token::from_single(0, TokenType::Eof),
             type_ids: HashMap::new(),
             types: Vec::new(),
+            is_skipping_nodes: false,
         };
 
         parser.types.push(TypeDefinition::Primitive {
@@ -277,7 +294,10 @@ impl Parser {
 
     fn get_token_type_id(&mut self) -> usize {
         let text = self.get_text(self.current_token.text_start, self.current_token.text_end);
-        *self.type_ids.get(text).unwrap_or(&(PrimitiveType::Void as usize))
+        *self
+            .type_ids
+            .get(text)
+            .unwrap_or(&(PrimitiveType::Void as usize))
     }
 
     fn abort(&self, message: &str) {
@@ -308,6 +328,10 @@ impl Parser {
     }
 
     fn add_node(&mut self, node: Node) -> usize {
+        if self.is_skipping_nodes {
+            return 0;
+        }
+
         let node_index = self.ast.len();
         self.ast.push(node);
         node_index
@@ -328,19 +352,48 @@ impl Parser {
         let mut function_indices = Vec::new();
         let mut struct_indices = Vec::new();
 
-        while !self.check_token(TokenType::Eof) {
-            if self.check_token(TokenType::Function) {
-                function_indices.push(self.function());
-            } else if self.check_token(TokenType::Struct) {
-                struct_indices.push(self.struct_node());
-            } else {
-                self.abort("Expected function or struct definition");
+        // TODO: Is this the correct way to go about it, or is there a way to parse functions without first parsing structs?
+        /*
+         * Parsing is done in multiple passes:
+         * 1. Parse types like structs, so they are ready to be used in functions.
+         * 2. Parse functions, using the types previously parsed.
+         * When a node doesn't need to be parsed in the current passed, it is still
+         * technically parsed in order to skip the correct amount of tokens,
+         * but no nodes are added to the AST.
+         */
+        for i in 0..2 {
+            while !self.check_token(TokenType::Eof) {
+                if self.check_token(TokenType::Function) {
+                    if i == 0 {
+                        self.is_skipping_nodes = true;
+                    }
+
+                    let function_index = self.function();
+
+                    if i != 0 {
+                        function_indices.push(function_index);
+                    }
+                } else if self.check_token(TokenType::Struct) {
+                    if i == 1 {
+                        self.is_skipping_nodes = true;
+                    }
+
+                    let struct_index = self.struct_node();
+
+                    if i != 1 {
+                        struct_indices.push(struct_index);
+                    }
+                } else {
+                    self.abort("Expected function or struct definition");
+                }
+
+                self.is_skipping_nodes = false;
+                self.newline();
             }
 
-            self.newline();
+            self.match_token(TokenType::Eof);
+            self.reset_tokens();
         }
-
-        self.match_token(TokenType::Eof);
 
         self.add_node(Node {
             node_type: NodeType::Program {
@@ -544,11 +597,22 @@ impl Parser {
 
         self.match_token(TokenType::EndStruct);
 
+        let field_list = Arc::new(field_list);
+
+        let struct_type_id = self.types.len();
+        self.types.push(TypeDefinition::Struct {
+            name_start,
+            name_end,
+            field_list: field_list.clone(),
+        });
+        let name = self.get_text(name_start, name_end).to_string();
+        self.type_ids.insert(name, struct_type_id);
+
         self.add_node(Node {
             node_type: NodeType::Struct {
                 name_start,
                 name_end,
-                field_list: Arc::new(field_list),
+                field_list,
             },
             node_start: text_start,
         })
@@ -752,16 +816,46 @@ impl Parser {
     fn primary(&mut self) -> usize {
         let text_start = self.current_token.text_start;
         let node_type = match self.current_token.token_type {
-            TokenType::Int => NodeType::PrimaryInt {
+            TokenType::IntLiteral => NodeType::PrimaryInt {
                 text_start,
                 text_end: self.current_token.text_end,
             },
-            TokenType::Float => NodeType::PrimaryFloat {
+            TokenType::FloatLiteral => NodeType::PrimaryFloat {
                 text_start,
                 text_end: self.current_token.text_end,
             },
             TokenType::True => NodeType::PrimaryBool { is_true: true },
             TokenType::False => NodeType::PrimaryBool { is_true: false },
+            TokenType::Ident if self.check_peek(TokenType::LBrace) => {
+                let name_start = text_start;
+                let name_end = self.current_token.text_end;
+                self.next_token();
+                self.match_token(TokenType::LBrace);
+                self.newline();
+
+                let mut argument_list = Vec::new();
+
+                while !self.check_token(TokenType::RBrace) {
+                    let field_name_start = self.current_token.text_start;
+                    let field_name_end = self.current_token.text_end;
+                    self.next_token();
+                    self.match_token(TokenType::Colon);
+                    let expression_index = self.expression();
+                    self.newline();
+
+                    argument_list.push(NamedArgument {
+                        name_start: field_name_start,
+                        name_end: field_name_end,
+                        expression_index,
+                    });
+                }
+
+                NodeType::PrimaryStruct {
+                    name_start,
+                    name_end,
+                    argument_list: Arc::new(argument_list),
+                }
+            },
             TokenType::Ident => NodeType::PrimaryIdent {
                 text_start,
                 text_end: self.current_token.text_end,

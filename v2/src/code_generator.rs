@@ -38,18 +38,32 @@ impl CodeGenerator {
     fn type_id_to_c_type(&self, type_id: usize) -> String {
         match &self.parser.types[type_id] {
             TypeDefinition::Primitive { primitive_type } => primitive_type_to_c_type(*primitive_type).into(),
-            TypeDefinition::Struct { name, .. } => name.into(),
+            TypeDefinition::Struct { name_start, name_end, .. } => self.parser.get_text(*name_start, *name_end).into(),
         }
     }
 
     fn program(&mut self, index: usize) {
-        let Node { node_type: NodeType::Program { function_indices, .. }, .. } = self.parser.ast[index].clone() else { unreachable!() };
+        let Node { node_type: NodeType::Program { function_indices, struct_indices }, .. } = self.parser.ast[index].clone() else { unreachable!() };
         self.emitter.set_region(EmitRegion::Preprocessor);
         self.emitter.emit_line("#define _CRT_SECURE_NO_WARNINGS");
         self.emitter.emit_line("#include <stdio.h>");
         self.emitter.emit_line("#include <stdbool.h>");
 
         self.emitter.set_region(EmitRegion::Body);
+
+        for (i, struct_index) in struct_indices.iter().enumerate() {
+            // Seperate struct definitions by a newline.
+            if i > 0 {
+                self.emitter.emit_line("");
+            }
+
+            self.struct_node(*struct_index);
+        }
+
+        if struct_indices.len() > 0 {
+            self.emitter.emit_line("");
+        }
+
         for (i, function_index) in function_indices.iter().enumerate() {
             // Seperate function definitions by a newline.
             if i > 0 {
@@ -192,6 +206,7 @@ impl CodeGenerator {
             NodeType::PrimaryFloat { .. } => self.primary_float(primary_index),
             NodeType::PrimaryBool { .. } => self.primary_bool(primary_index),
             NodeType::PrimaryIdent { .. } => self.primary_ident(primary_index),
+            NodeType::PrimaryStruct { .. } => self.primary_struct(primary_index),
             _ => self.abort(
                 "Encountered a non-primary node within a call primary",
                 primary_node.node_start,
@@ -224,6 +239,29 @@ impl CodeGenerator {
         let Node { node_type: NodeType::PrimaryIdent { text_start, text_end }, .. } = self.parser.ast[index] else { unreachable!() };
         let text = self.parser.get_text(text_start, text_end);
         self.emitter.emit(text);
+    }
+
+    fn primary_struct(&mut self, index: usize) {
+        let Node { node_type: NodeType::PrimaryStruct { name_start, name_end, argument_list }, .. } = self.parser.ast[index].clone() else { unreachable!() };
+        let name = self.parser.get_text(name_start, name_end);
+
+        self.emitter.emit("(");
+        self.emitter.emit(name);
+        self.emitter.emit(")");
+        self.emitter.emit_line(" {");
+        self.emitter.indent();
+
+        for argument in argument_list.iter() {
+            let argument_name = self.parser.get_text(argument.name_start, argument.name_end);
+            self.emitter.emit(".");
+            self.emitter.emit(argument_name);
+            self.emitter.emit(" = ");
+            self.expression(argument.expression_index);
+            self.emitter.emit_line(",");
+        }
+
+        self.emitter.unindent();
+        self.emitter.emit("}");
     }
 
     fn arguments(&mut self, index: usize) {
@@ -332,6 +370,36 @@ impl CodeGenerator {
         self.parameters(parameters_index);
         self.emitter.emit(" ");
         self.block(block_index);
+    }
+
+    fn struct_node(&mut self, index: usize) {
+        let Node { node_type: NodeType::Struct { name_start, name_end, field_list }, .. } = self.parser.ast[index].clone() else { unreachable!() };
+
+        let name = self.parser.get_text(name_start, name_end);
+        self.emitter.set_region(EmitRegion::Prototype);
+        self.emitter.emit("typedef struct ");
+        self.emitter.emit(name);
+        self.emitter.emit(" ");
+        self.emitter.emit(name);
+        self.emitter.emit_line(";");
+
+        self.emitter.set_region(EmitRegion::Body);
+        self.emitter.emit("struct ");
+        self.emitter.emit(name);
+        self.emitter.emit_line(" {");
+        self.emitter.indent();
+
+        for field in field_list.iter() {
+            let field_name = self.parser.get_text(field.name_start, field.name_end);
+            let c_type = self.type_id_to_c_type(field.type_id);
+            self.emitter.emit(&c_type);
+            self.emitter.emit(" ");
+            self.emitter.emit(field_name);
+            self.emitter.emit_line(";");
+        }
+
+        self.emitter.unindent();
+        self.emitter.emit_line("};");
     }
 
     fn parameters(&mut self, index: usize) {

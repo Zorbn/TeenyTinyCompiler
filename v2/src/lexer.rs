@@ -6,6 +6,8 @@ pub enum TokenType {
     Newline,
     LParen,
     RParen,
+    LBrace,
+    RBrace,
     Ident,
     String,
     Comma,
@@ -35,8 +37,8 @@ pub enum TokenType {
     Of,
     EndStruct,
 
-    Int,
-    Float,
+    IntLiteral,
+    FloatLiteral,
 
     // Operators
     Eq,
@@ -196,6 +198,8 @@ impl Lexer {
             b'\n' => return Token::from_single(self.current_position, Newline),
             b'(' => return Token::from_single(self.current_position, LParen),
             b')' => return Token::from_single(self.current_position, RParen),
+            b'{' => return Token::from_single(self.current_position, LBrace),
+            b'}' => return Token::from_single(self.current_position, RBrace),
             b',' => return Token::from_single(self.current_position, Comma),
             b':' => return Token::from_single(self.current_position, Colon),
             b'\0' => return Token::from_single(self.current_position, Eof),
@@ -285,9 +289,9 @@ impl Lexer {
                     self.next_char();
                 }
 
-                Float
+                FloatLiteral
             } else {
-                Int
+                IntLiteral
             };
 
             return Token::new(start_position, self.current_position + 1, token_type);

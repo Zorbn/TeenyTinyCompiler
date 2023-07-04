@@ -19,6 +19,8 @@ mod error_reporting;
 mod lexer;
 mod parser;
 
+use std::io::Write;
+
 use code_generator::CodeGenerator;
 use lexer::Lexer;
 use parser::Parser;
@@ -47,9 +49,9 @@ fn main() {
     let mut parser = Parser::new(lexer);
     let program_index = parser.program();
 
-    println!("Checking code...");
-    let mut checker = Checker::new(&parser);
-    checker.check(program_index);
+    // println!("Checking code...");
+    // let mut checker = Checker::new(&parser);
+    // checker.check(program_index);
 
     if std::fs::create_dir_all(OUTPUT_DIR).is_err() {
         abort("Couldn't create output directory!", -2)
@@ -67,13 +69,19 @@ fn main() {
     };
     let output_exe_path = format!("{}/out{}", OUTPUT_DIR, output_exe_extension);
     println!("Calling system compiler...");
-    if std::process::Command::new(CC)
+    match std::process::Command::new(CC)
         .args([&output_src_path, "-o", &output_exe_path])
         .args(CC_FLAGS)
         .output()
-        .is_err()
     {
-        abort("Couldn't compile using the system compiler!", -3)
+        Err(_) => abort("Couldn't compile using the system compiler!", -3),
+        Ok(output) => {
+            if !output.stderr.is_empty() {
+                println!("System compiler error:\n");
+                std::io::stdout().write_all(&output.stderr).unwrap();
+                abort("", -4);
+            }
+        },
     }
 
     println!("Finished compiling!");
