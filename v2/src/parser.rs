@@ -89,6 +89,12 @@ pub struct Field {
     pub type_id: usize,
 }
 
+#[derive(Debug)]
+pub struct FieldName {
+    pub name_start: usize,
+    pub name_end: usize,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct Parameter {
     pub name_start: usize,
@@ -157,6 +163,11 @@ pub enum NodeType {
         name_start: usize,
         name_end: usize,
         argument_list: Arc<Vec<NamedArgument>>,
+    },
+    PrimaryField {
+        name_start: usize,
+        name_end: usize,
+        field_list: Arc<Vec<FieldName>>,
     },
     PrimaryIdent {
         text_start: usize,
@@ -826,6 +837,34 @@ impl Parser {
             },
             TokenType::True => NodeType::PrimaryBool { is_true: true },
             TokenType::False => NodeType::PrimaryBool { is_true: false },
+            TokenType::Ident if self.check_peek(TokenType::Period) => {
+                let name_start = text_start;
+                let name_end = self.current_token.text_end;
+
+                let mut field_list = Vec::new();
+
+                loop {
+                    self.next_token();
+                    self.match_token(TokenType::Period);
+                    let field_name_start = self.current_token.text_start;
+                    let field_name_end = self.current_token.text_end;
+
+                    field_list.push(FieldName {
+                        name_start: field_name_start,
+                        name_end: field_name_end,
+                    });
+
+                    if !self.check_peek(TokenType::Period) {
+                        break;
+                    }
+                }
+
+                NodeType::PrimaryField {
+                    name_start,
+                    name_end,
+                    field_list: Arc::new(field_list),
+                }
+            }
             TokenType::Ident if self.check_peek(TokenType::LBrace) => {
                 let name_start = text_start;
                 let name_end = self.current_token.text_end;
@@ -855,7 +894,7 @@ impl Parser {
                     name_end,
                     argument_list: Arc::new(argument_list),
                 }
-            },
+            }
             TokenType::Ident => NodeType::PrimaryIdent {
                 text_start,
                 text_end: self.current_token.text_end,

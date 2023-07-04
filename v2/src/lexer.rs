@@ -12,6 +12,7 @@ pub enum TokenType {
     String,
     Comma,
     Colon,
+    Period,
 
     // Keywords
     Print,
@@ -202,6 +203,7 @@ impl Lexer {
             b'}' => return Token::from_single(self.current_position, RBrace),
             b',' => return Token::from_single(self.current_position, Comma),
             b':' => return Token::from_single(self.current_position, Colon),
+            b'.' => return Token::from_single(self.current_position, Period),
             b'\0' => return Token::from_single(self.current_position, Eof),
             _ => {}
         }

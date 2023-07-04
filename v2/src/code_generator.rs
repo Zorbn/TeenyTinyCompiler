@@ -207,6 +207,7 @@ impl CodeGenerator {
             NodeType::PrimaryBool { .. } => self.primary_bool(primary_index),
             NodeType::PrimaryIdent { .. } => self.primary_ident(primary_index),
             NodeType::PrimaryStruct { .. } => self.primary_struct(primary_index),
+            NodeType::PrimaryField { .. } => self.primary_field(primary_index),
             _ => self.abort(
                 "Encountered a non-primary node within a call primary",
                 primary_node.node_start,
@@ -262,6 +263,19 @@ impl CodeGenerator {
 
         self.emitter.unindent();
         self.emitter.emit("}");
+    }
+
+    fn primary_field(&mut self, index: usize) {
+        let Node { node_type: NodeType::PrimaryField { name_start, name_end, field_list }, .. } = self.parser.ast[index].clone() else { unreachable!() };
+        let name = self.parser.get_text(name_start, name_end);
+
+        self.emitter.emit(name);
+        for field in field_list.iter() {
+            let field_name = self.parser.get_text(field.name_start, field.name_end);
+
+            self.emitter.emit(".");
+            self.emitter.emit(field_name);
+        }
     }
 
     fn arguments(&mut self, index: usize) {

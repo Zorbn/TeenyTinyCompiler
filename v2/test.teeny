@@ -1,7 +1,13 @@
 function myPrint(ms: MyStruct): void do
-    return
-    print 6
+    print "Vector 2:"
+    print ms.e.x
+    print ms.e.y
 endfunction
+
+struct Vec2 of
+    x: float
+    y: float
+endstruct
 
 struct MyStruct of
     a: int
@@ -9,6 +15,8 @@ struct MyStruct of
 
     c: int
     d: float
+
+    e: Vec2
 endstruct
 
 function main(): int do
@@ -26,6 +34,11 @@ function main(): int do
 
         c: 6
         d: 6.0
+
+        e: Vec2 {
+            x: 1.0
+            y: 2.0
+        }
     })
 
     return 0
