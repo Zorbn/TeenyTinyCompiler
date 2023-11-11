@@ -354,9 +354,77 @@ impl<'a> Checker<'a> {
         let Node { node_type: NodeType::PrimaryStruct { name_start, name_end, argument_list }, node_start } = self.parser.ast[index].clone() else { unreachable!() };
         let name = self.parser.get_text(name_start, name_end);
 
-        // TODO: Make sure all arguments are provided, and that all arguments have valid names/values.
-        // TODO: Make sure a type id corresponds to this name.
-        let name_type_id = self.parser.type_ids[name];
+        let name_type_id = match self.parser.type_ids.get(name) {
+            Some(type_id) => *type_id,
+            None => {
+                self.abort(
+                    &format!("Constructing struct of undefined type \"{}\"", name),
+                    node_start,
+                );
+                unreachable!()
+            },
+        };
+
+        let field_list = match &self.parser.types[name_type_id] {
+            TypeDefinition::Struct { field_list, .. } => field_list,
+            TypeDefinition::Primitive { .. } => {
+                self.abort(
+                    &format!("Can't construct non-struct type \"{}\"", name),
+                    node_start,
+                );
+                unreachable!()
+            },
+        };
+
+        if field_list.len() != argument_list.len() {
+            self.abort(
+                &format!(
+                    "Constructor \"{}\" expected {} arguments but got {}",
+                    name,
+                    field_list.len(),
+                    argument_list.len()
+                ),
+                node_start,
+            );
+        }
+
+        // Check that argument types match parameter types.
+        for (field, argument) in field_list
+            .iter()
+            .zip(argument_list.iter())
+        {
+            let field_name = self.parser.get_text(field.name_start, field.name_end);
+            let argument_name = self.parser.get_text(argument.name_start, argument.name_end);
+
+            if argument_name != field_name {
+                self.abort(
+                    &format!(
+                        "Constructor \"{}\" expected argument for field \"{}\" but got argument for field \"{}\"",
+                        name,
+                        field_name,
+                        argument_name,
+                    ),
+                    node_start,
+                );
+            }
+
+            let expression_type_id =
+                        self.expression(argument.expression_index, environment.clone());
+
+            if field.type_id != expression_type_id {
+                self.abort(
+                    &format!(
+                        "Constructor \"{}\" expected argument of type \"{:?}\" for field \"{}\" but got argument of type \"{:?}\"",
+                        name,
+                        self.parser.types[field.type_id],
+                        field_name,
+                        self.parser.types[expression_type_id],
+                    ),
+                    node_start,
+                );
+            }
+        }
+
         name_type_id
     }
 
