@@ -2,9 +2,6 @@ use std::{collections::HashMap, sync::Arc};
 
 use crate::{environment::*, error_reporting::report_error, parser::*};
 
-// TODO: Typecheck structs: struct instance creations, usages, etc.
-// TODO: Make sure initialized structs have been declared, and declared structs haven't been declared already.
-
 #[derive(Clone)]
 struct FunctionDeclaration {
     parameter_type_ids: Arc<Vec<usize>>,
@@ -23,6 +20,9 @@ impl<'a> Checker<'a> {
                 TypeDefinition::Primitive { .. } => (),
                 TypeDefinition::Struct { name_start, name_end, .. } => {
                     println!("{}, \"{}\"", i, parser.get_text(*name_start, *name_end))
+                },
+                TypeDefinition::Array { element_type_id, length } => {
+                    println!("{}, \"{}[{}]\"", i, *element_type_id, *length)
                 },
             }
         }
@@ -263,6 +263,7 @@ impl<'a> Checker<'a> {
             NodeType::PrimaryIdent { .. } => self.primary_ident(primary_index, environment),
             NodeType::PrimaryField { .. } => self.primary_field(primary_index, environment),
             NodeType::PrimaryStruct { .. } => self.primary_struct(primary_index, environment),
+            NodeType::PrimaryArray { .. } => self.primary_array(primary_index),
             _ => {
                 self.abort(
                     "Encountered a non-primary node within a call primary",
@@ -321,9 +322,9 @@ impl<'a> Checker<'a> {
         'fields: for field in field_list.iter() {
             let possible_fields_list = match &self.parser.types[name_type_id] {
                 TypeDefinition::Struct { field_list, .. } => field_list,
-                TypeDefinition::Primitive { .. } => {
+                _ => {
                     self.abort(
-                        &format!("Referencing field on primitive variable \"{}\"", name),
+                        &format!("Referencing field on non-struct variable \"{}\"", name),
                         node_start,
                     );
                     unreachable!()
@@ -354,7 +355,7 @@ impl<'a> Checker<'a> {
         let Node { node_type: NodeType::PrimaryStruct { name_start, name_end, argument_list }, node_start } = self.parser.ast[index].clone() else { unreachable!() };
         let name = self.parser.get_text(name_start, name_end);
 
-        let name_type_id = match self.parser.type_ids.get(name) {
+        let name_type_id = match self.parser.simple_type_ids.get(name) {
             Some(type_id) => *type_id,
             None => {
                 self.abort(
@@ -367,7 +368,7 @@ impl<'a> Checker<'a> {
 
         let field_list = match &self.parser.types[name_type_id] {
             TypeDefinition::Struct { field_list, .. } => field_list,
-            TypeDefinition::Primitive { .. } => {
+            _ => {
                 self.abort(
                     &format!("Can't construct non-struct type \"{}\"", name),
                     node_start,
@@ -424,6 +425,24 @@ impl<'a> Checker<'a> {
                 );
             }
         }
+
+        name_type_id
+    }
+
+    fn primary_array(&mut self, index: usize) -> usize {
+        let Node { node_type: NodeType::PrimaryArray { name_start, name_end, length }, node_start } = self.parser.ast[index] else { unreachable!() };
+        let name = self.parser.get_text(name_start, name_end);
+
+        let name_type_id = match self.parser.array_type_ids.get(&(name.into(), length)) {
+            Some(type_id) => *type_id,
+            None => {
+                self.abort(
+                    &format!("Constructing array of undefined type \"{}\"", name),
+                    node_start,
+                );
+                unreachable!()
+            },
+        };
 
         name_type_id
     }

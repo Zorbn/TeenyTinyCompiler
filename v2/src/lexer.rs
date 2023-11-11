@@ -8,6 +8,8 @@ pub enum TokenType {
     RParen,
     LBrace,
     RBrace,
+    LBracket,
+    RBracket,
     Ident,
     String,
     Comma,
@@ -80,7 +82,7 @@ impl Token {
     }
 }
 
-// TODO: Rename to to_token or something?
+// TODO: Rename to keyword_to_token or something?
 fn check_if_keyword(token_text: &[u8]) -> Option<TokenType> {
     use TokenType::*;
 
@@ -201,6 +203,8 @@ impl Lexer {
             b')' => return Token::from_single(self.current_position, RParen),
             b'{' => return Token::from_single(self.current_position, LBrace),
             b'}' => return Token::from_single(self.current_position, RBrace),
+            b'[' => return Token::from_single(self.current_position, LBracket),
+            b']' => return Token::from_single(self.current_position, RBracket),
             b',' => return Token::from_single(self.current_position, Comma),
             b':' => return Token::from_single(self.current_position, Colon),
             b'.' => return Token::from_single(self.current_position, Period),

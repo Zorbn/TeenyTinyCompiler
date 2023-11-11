@@ -5,9 +5,6 @@ use crate::{
     lexer::{Lexer, Token, TokenType},
 };
 
-// TODO: Remove usages of "value type" now that that concept is being redone.
-// TODO: Create wrapper types for return_type and expression_type ids used in the checker?
-// TODO: The first few values of the parser.types list are the primitive types, with their indices being the primitive cast to a usize, is there a way to make that more obvious?
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PrimitiveType {
     Void,
@@ -27,6 +24,10 @@ pub enum TypeDefinition {
         name_start: usize,
         name_end: usize,
         field_list: Arc<Vec<Field>>,
+    },
+    Array {
+        element_type_id: usize,
+        length: usize,
     },
 }
 
@@ -173,6 +174,11 @@ pub enum NodeType {
         text_start: usize,
         text_end: usize,
     },
+    PrimaryArray {
+        name_start: usize,
+        name_end: usize,
+        length: usize,
+    },
     Arguments {
         expression_indices: Arc<Vec<usize>>,
     },
@@ -232,7 +238,8 @@ pub struct Node {
 
 pub struct Parser {
     pub ast: Vec<Node>,
-    pub type_ids: HashMap<String, usize>,
+    pub simple_type_ids: HashMap<String, usize>,
+    pub array_type_ids: HashMap<(String, usize), usize>,
     pub types: Vec<TypeDefinition>,
     pub lexer: Lexer,
     current_token: Token,
@@ -247,7 +254,8 @@ impl Parser {
             lexer,
             current_token: Token::from_single(0, TokenType::Eof),
             peek_token: Token::from_single(0, TokenType::Eof),
-            type_ids: HashMap::new(),
+            simple_type_ids: HashMap::new(),
+            array_type_ids: HashMap::new(),
             types: Vec::new(),
             is_skipping_nodes: false,
         };
@@ -256,28 +264,28 @@ impl Parser {
             primitive_type: PrimitiveType::Void,
         });
         parser
-            .type_ids
+            .simple_type_ids
             .insert("void".into(), PrimitiveType::Void as usize);
 
         parser.types.push(TypeDefinition::Primitive {
             primitive_type: PrimitiveType::Int,
         });
         parser
-            .type_ids
+            .simple_type_ids
             .insert("int".into(), PrimitiveType::Int as usize);
 
         parser.types.push(TypeDefinition::Primitive {
             primitive_type: PrimitiveType::Float,
         });
         parser
-            .type_ids
+            .simple_type_ids
             .insert("float".into(), PrimitiveType::Float as usize);
 
         parser.types.push(TypeDefinition::Primitive {
             primitive_type: PrimitiveType::Bool,
         });
         parser
-            .type_ids
+            .simple_type_ids
             .insert("bool".into(), PrimitiveType::Bool as usize);
 
         parser.reset_tokens();
@@ -303,12 +311,58 @@ impl Parser {
         self.peek_token = self.lexer.get_token();
     }
 
-    fn get_token_type_id(&mut self) -> usize {
-        let text = self.get_text(self.current_token.text_start, self.current_token.text_end);
-        *self
-            .type_ids
-            .get(text)
-            .unwrap_or(&(PrimitiveType::Void as usize))
+    fn token_to_array_length(&mut self, token: Token) -> usize {
+        let length_text = self.get_text(token.text_start, token.text_end);
+
+        match length_text.parse::<usize>() {
+            Ok(length) => length,
+            Err(_) => {
+                self.abort(&format!(
+                    "Invalid array length \"{}\"",
+                    length_text,
+                ));
+                unreachable!()
+            },
+        }
+    }
+
+    fn get_type_id(&mut self) -> usize {
+        let start_token = self.current_token;
+        self.next_token();
+        if !self.check_token(TokenType::LBracket) {
+            // This is just a simple type.
+            let text = self.get_text(start_token.text_start, start_token.text_end);
+            return *self
+                .simple_type_ids
+                .get(text)
+                .unwrap_or(&(PrimitiveType::Void as usize));
+        }
+
+        // TODO: This code only supports single dimensional arrays right now.
+        // This is an array.
+        self.next_token();
+        let length_token = self.current_token;
+        self.next_token();
+        self.match_token(TokenType::RBracket);
+
+        let length = self.token_to_array_length(length_token);
+
+        let text = self.get_text(start_token.text_start, start_token.text_end);
+        let element_type_id = *self
+                .simple_type_ids
+                .get(text)
+                .unwrap_or(&(PrimitiveType::Void as usize));
+
+        let key = (text.into(), length);
+        if let Some(existing_type_id) = self.array_type_ids.get(&key) {
+            return *existing_type_id;
+        }
+
+        let type_id = self.types.len();
+        self.types.push(TypeDefinition::Array { element_type_id, length });
+        self.array_type_ids.insert(key, type_id);
+
+        type_id
     }
 
     fn abort(&self, message: &str) {
@@ -328,14 +382,17 @@ impl Parser {
     }
 
     fn match_token(&mut self, token_type: TokenType) {
+        self.match_in_place(token_type);
+        self.next_token();
+    }
+
+    fn match_in_place(&mut self, token_type: TokenType) {
         if !self.check_token(token_type) {
             self.abort(&format!(
                 "Expected token {:?}, got {:?}",
                 token_type, self.current_token.token_type
             ));
         }
-
-        self.next_token();
     }
 
     fn add_node(&mut self, node: Node) -> usize {
@@ -498,8 +555,7 @@ impl Parser {
             let name_end = self.current_token.text_end;
             self.next_token();
             self.match_token(TokenType::Colon);
-            let type_id = self.get_token_type_id();
-            self.next_token();
+            let type_id = self.get_type_id();
             self.match_token(TokenType::Eq);
             let expression_index = self.expression();
 
@@ -595,8 +651,7 @@ impl Parser {
             let field_name_end = self.current_token.text_end;
             self.next_token();
             self.match_token(TokenType::Colon);
-            let type_id = self.get_token_type_id();
-            self.next_token();
+            let type_id = self.get_type_id();
             self.newline();
 
             field_list.push(Field {
@@ -614,8 +669,8 @@ impl Parser {
             return None;
         }
 
-        let name = self.get_text(name_start, name_end).to_string();
-        if self.type_ids.contains_key(&name) {
+        let name = self.get_text(name_start, name_end).into();
+        if self.simple_type_ids.contains_key(&name) {
             self.abort(&format!("Duplicate struct definition for \"{}\"", name));
         }
 
@@ -625,7 +680,7 @@ impl Parser {
             name_end,
             field_list: field_list.clone(),
         });
-        self.type_ids.insert(name, struct_type_id);
+        self.simple_type_ids.insert(name, struct_type_id);
 
         Some(self.add_node(Node {
             node_type: NodeType::Struct {
@@ -652,8 +707,7 @@ impl Parser {
             let name_end = self.current_token.text_end;
             self.next_token();
             self.match_token(TokenType::Colon);
-            let type_id = self.get_token_type_id();
-            self.next_token();
+            let type_id = self.get_type_id();
 
             list.push(Parameter {
                 name_start,
@@ -664,8 +718,7 @@ impl Parser {
 
         self.match_token(TokenType::RParen);
         self.match_token(TokenType::Colon);
-        let return_type_id = self.get_token_type_id();
-        self.next_token();
+        let return_type_id = self.get_type_id();
 
         self.add_node(Node {
             node_type: NodeType::Parameters {
@@ -903,6 +956,22 @@ impl Parser {
                     argument_list: Arc::new(argument_list),
                 }
             }
+            TokenType::Ident if self.check_peek(TokenType::LBracket) => {
+                let name_start = text_start;
+                let name_end = self.current_token.text_end;
+
+                self.next_token();
+                self.next_token();
+                let length = self.token_to_array_length(self.current_token);
+                self.next_token();
+                self.match_in_place(TokenType::RBracket);
+
+                NodeType::PrimaryArray {
+                    name_start,
+                    name_end,
+                    length,
+                }
+            },
             TokenType::Ident => NodeType::PrimaryIdent {
                 text_start,
                 text_end: self.current_token.text_end,

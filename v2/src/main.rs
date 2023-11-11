@@ -1,7 +1,6 @@
 /*
  * Possible Improvements:
  * Arrays.
- * Structures.
  * Ability to declare extern c functions and call them.
  * Heap allocations (w/ destructors?).
  * Add an else branch to the if statement, update does_return tracking accordingly.

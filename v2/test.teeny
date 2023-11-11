@@ -41,5 +41,7 @@ function main(): int do
         }
     })
 
+    let array: int[5] = int[5]
+
     return 0
 endfunction

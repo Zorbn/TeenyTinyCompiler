@@ -2,13 +2,18 @@ use crate::{emitter::*, error_reporting::report_error, parser::*};
 
 // TODO: Codegen structs.
 
-fn primitive_type_to_c_type(primitive_type: PrimitiveType) -> &'static str {
+fn primitive_type_to_c_name(primitive_type: PrimitiveType) -> &'static str {
     match primitive_type {
         PrimitiveType::Int => "int",
         PrimitiveType::Float => "float",
         PrimitiveType::Bool => "bool",
         _ => "void",
     }
+}
+
+struct CType {
+    prefix: String,
+    postfix: Option<String>,
 }
 
 pub struct CodeGenerator {
@@ -35,10 +40,14 @@ impl CodeGenerator {
         report_error(self.parser.lexer.get_source(), message, start)
     }
 
-    fn type_id_to_c_type(&self, type_id: usize) -> String {
+    fn type_id_to_c_type(&self, type_id: usize) -> CType {
         match &self.parser.types[type_id] {
-            TypeDefinition::Primitive { primitive_type } => primitive_type_to_c_type(*primitive_type).into(),
-            TypeDefinition::Struct { name_start, name_end, .. } => self.parser.get_text(*name_start, *name_end).into(),
+            TypeDefinition::Primitive { primitive_type } => CType { prefix: primitive_type_to_c_name(*primitive_type).into(), postfix: None },
+            TypeDefinition::Struct { name_start, name_end, .. } => CType { prefix: self.parser.get_text(*name_start, *name_end).into(), postfix: None },
+            TypeDefinition::Array { element_type_id, length } => {
+                let element_c_type = self.type_id_to_c_type(*element_type_id);
+                CType { prefix: element_c_type.prefix, postfix: Some(format!("[{}]", length)) }
+            },
         }
     }
 
@@ -208,6 +217,7 @@ impl CodeGenerator {
             NodeType::PrimaryIdent { .. } => self.primary_ident(primary_index),
             NodeType::PrimaryStruct { .. } => self.primary_struct(primary_index),
             NodeType::PrimaryField { .. } => self.primary_field(primary_index),
+            NodeType::PrimaryArray { .. } => self.primary_array(primary_index),
             _ => self.abort(
                 "Encountered a non-primary node within a call primary",
                 primary_node.node_start,
@@ -278,6 +288,12 @@ impl CodeGenerator {
         }
     }
 
+    fn primary_array(&mut self, index: usize) {
+        let Node { node_type: NodeType::PrimaryArray { .. }, .. } = self.parser.ast[index] else { unreachable!() };
+
+        self.emitter.emit("{0}");
+    }
+
     fn arguments(&mut self, index: usize) {
         let Node { node_type: NodeType::Arguments { expression_indices }, .. } = self.parser.ast[index].clone() else { unreachable!() };
         self.emitter.emit("(");
@@ -329,9 +345,12 @@ impl CodeGenerator {
         let Node { node_type: NodeType::StatementVariableDeclaration { name_start, name_end, type_id, expression_index }, .. } = self.parser.ast[index] else { unreachable!() };
         let name = self.parser.get_text(name_start, name_end);
         let c_type = self.type_id_to_c_type(type_id);
-        self.emitter.emit(&c_type);
+        self.emitter.emit(&c_type.prefix);
         self.emitter.emit(" ");
         self.emitter.emit(name);
+        if let Some(c_type_postfix) = c_type.postfix {
+            self.emitter.emit(&c_type_postfix);
+        }
         self.emitter.emit(" = ");
         self.expression(expression_index);
         self.emitter.emit_line(";");
@@ -366,10 +385,11 @@ impl CodeGenerator {
     fn function(&mut self, index: usize) {
         let Node { node_type: NodeType::Function { name_start, name_end, parameters_index, block_index }, .. } = self.parser.ast[index] else { unreachable!() };
         let Node { node_type: NodeType::Parameters { return_type_id, .. }, .. } = self.parser.ast[parameters_index].clone() else { unreachable!() };
+        // TODO: Array returning is broken, arrays can't be directly returned in C so a workaround is needed.
         let c_return_type = self.type_id_to_c_type(return_type_id);
 
         self.emitter.set_region(EmitRegion::Prototype);
-        self.emitter.emit(&c_return_type);
+        self.emitter.emit(&c_return_type.prefix);
         self.emitter.emit(" ");
         self.emitter
             .emit(self.parser.get_text(name_start, name_end));
@@ -377,7 +397,7 @@ impl CodeGenerator {
         self.emitter.emit_line(";");
 
         self.emitter.set_region(EmitRegion::Body);
-        self.emitter.emit(&c_return_type);
+        self.emitter.emit(&c_return_type.prefix);
         self.emitter.emit(" ");
         self.emitter
             .emit(self.parser.get_text(name_start, name_end));
@@ -406,9 +426,12 @@ impl CodeGenerator {
         for field in field_list.iter() {
             let field_name = self.parser.get_text(field.name_start, field.name_end);
             let c_type = self.type_id_to_c_type(field.type_id);
-            self.emitter.emit(&c_type);
+            self.emitter.emit(&c_type.prefix);
             self.emitter.emit(" ");
             self.emitter.emit(field_name);
+            if let Some(c_type_postfix) = c_type.postfix {
+                self.emitter.emit(&c_type_postfix);
+            }
             self.emitter.emit_line(";");
         }
 
@@ -430,12 +453,15 @@ impl CodeGenerator {
             }
 
             let c_type = self.type_id_to_c_type(parameter.type_id);
-            self.emitter.emit(&c_type);
+            self.emitter.emit(&c_type.prefix);
             self.emitter.emit(" ");
             let name = self
                 .parser
                 .get_text(parameter.name_start, parameter.name_end);
             self.emitter.emit(name);
+            if let Some(c_type_postfix) = c_type.postfix {
+                self.emitter.emit(&c_type_postfix);
+            }
         }
 
         self.emitter.emit(")");
