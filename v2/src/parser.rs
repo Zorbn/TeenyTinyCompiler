@@ -379,20 +379,16 @@ impl Parser {
                         self.is_skipping_nodes = true;
                     }
 
-                    let function_index = self.function();
-
-                    if i != 0 {
-                        function_indices.push(function_index);
+                    if let Some(function_index) = self.function() {
+                        function_indices.push(function_index)
                     }
                 } else if self.check_token(TokenType::Struct) {
                     if i == 1 {
                         self.is_skipping_nodes = true;
                     }
 
-                    let struct_index = self.struct_node();
-
-                    if i != 1 {
-                        struct_indices.push(struct_index);
+                    if let Some(struct_index) = self.struct_node() {
+                        struct_indices.push(struct_index)
                     }
                 } else {
                     self.abort("Expected function or struct definition");
@@ -555,7 +551,7 @@ impl Parser {
 
     // TODO: Make sure function names don't collide with others when C is generated. Maybe don't include C headers in the same file as the output, put all of the C code in a seperate file and then just import it's header in the main output code?
     // "function" ident parameters "do" block "endfunction"
-    fn function(&mut self) -> usize {
+    fn function(&mut self) -> Option<usize> {
         let text_start = self.current_token.text_start;
         self.next_token();
 
@@ -567,7 +563,11 @@ impl Parser {
         self.newline();
         let block_index = self.block(TokenType::EndFunction);
 
-        self.add_node(Node {
+        if self.is_skipping_nodes {
+            return None;
+        }
+
+        Some(self.add_node(Node {
             node_type: NodeType::Function {
                 name_start,
                 name_end,
@@ -575,10 +575,10 @@ impl Parser {
                 block_index,
             },
             node_start: text_start,
-        })
+        }))
     }
 
-    fn struct_node(&mut self) -> usize {
+    fn struct_node(&mut self) -> Option<usize> {
         let text_start = self.current_token.text_start;
         self.next_token();
 
@@ -610,23 +610,31 @@ impl Parser {
 
         let field_list = Arc::new(field_list);
 
+        if self.is_skipping_nodes {
+            return None;
+        }
+
+        let name = self.get_text(name_start, name_end).to_string();
+        if self.type_ids.contains_key(&name) {
+            self.abort(&format!("Duplicate struct definition for \"{}\"", name));
+        }
+
         let struct_type_id = self.types.len();
         self.types.push(TypeDefinition::Struct {
             name_start,
             name_end,
             field_list: field_list.clone(),
         });
-        let name = self.get_text(name_start, name_end).to_string();
         self.type_ids.insert(name, struct_type_id);
 
-        self.add_node(Node {
+        Some(self.add_node(Node {
             node_type: NodeType::Struct {
                 name_start,
                 name_end,
                 field_list,
             },
             node_start: text_start,
-        })
+        }))
     }
 
     // parameters ::= "(" ("," ident ":" type)* ")" ":" type

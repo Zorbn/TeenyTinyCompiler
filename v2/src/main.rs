@@ -49,9 +49,9 @@ fn main() {
     let mut parser = Parser::new(lexer);
     let program_index = parser.program();
 
-    // println!("Checking code...");
-    // let mut checker = Checker::new(&parser);
-    // checker.check(program_index);
+    println!("Checking code...");
+    let mut checker = Checker::new(&parser);
+    checker.check(program_index);
 
     if std::fs::create_dir_all(OUTPUT_DIR).is_err() {
         abort("Couldn't create output directory!", -2)

@@ -18,6 +18,15 @@ pub struct Checker<'a> {
 
 impl<'a> Checker<'a> {
     pub fn new(parser: &'a Parser) -> Self {
+        for (i, t) in parser.types.iter().enumerate() {
+            match t {
+                TypeDefinition::Primitive { .. } => (),
+                TypeDefinition::Struct { name_start, name_end, .. } => {
+                    println!("{}, \"{}\"", i, parser.get_text(*name_start, *name_end))
+                },
+            }
+        }
+
         Self {
             parser,
             function_declarations: HashMap::new(),
@@ -252,7 +261,8 @@ impl<'a> Checker<'a> {
             NodeType::PrimaryFloat { .. } => self.primary_float(primary_index),
             NodeType::PrimaryBool { .. } => self.primary_bool(primary_index),
             NodeType::PrimaryIdent { .. } => self.primary_ident(primary_index, environment),
-            NodeType::PrimaryStruct { .. } => todo!(),
+            NodeType::PrimaryField { .. } => self.primary_field(primary_index, environment),
+            NodeType::PrimaryStruct { .. } => self.primary_struct(primary_index, environment),
             _ => {
                 self.abort(
                     "Encountered a non-primary node within a call primary",
@@ -289,6 +299,65 @@ impl<'a> Checker<'a> {
                 unreachable!()
             }
         }
+    }
+
+    fn primary_field(&mut self, index: usize, environment: EnvironmentRef) -> usize {
+        let Node { node_type: NodeType::PrimaryField { name_start, name_end, field_list }, node_start } = self.parser.ast[index].clone() else { unreachable!() };
+        let name = self.parser.get_text(name_start, name_end);
+
+        // TODO: Could this check be merged with the ident check? The name at the start of a field should be an identifer,
+        // but maybe this changes if static fields are added?
+        let mut name_type_id = match environment.borrow().get_symbol_type_id(name) {
+            Some(type_id) => type_id,
+            None => {
+                self.abort(
+                    &format!("Referencing field on undefined variable \"{}\"", name),
+                    node_start,
+                );
+                unreachable!()
+            }
+        };
+
+        'fields: for field in field_list.iter() {
+            let possible_fields_list = match &self.parser.types[name_type_id] {
+                TypeDefinition::Struct { field_list, .. } => field_list,
+                TypeDefinition::Primitive { .. } => {
+                    self.abort(
+                        &format!("Referencing field on primitive variable \"{}\"", name),
+                        node_start,
+                    );
+                    unreachable!()
+                },
+            };
+
+            let field_name = self.parser.get_text(field.name_start, field.name_end);
+            for possible_field in possible_fields_list.iter() {
+                let possible_field_name = self.parser.get_text(possible_field.name_start, possible_field.name_end);
+                if field_name == possible_field_name {
+                    // This is the correct field, store it's type id, the last field's type id is the expression's type id.
+                    name_type_id = possible_field.type_id;
+                    continue 'fields;
+                }
+            }
+
+            self.abort(
+                &format!("Referencing non-existant field \"{}\"", field_name),
+                node_start,
+            );
+            unreachable!()
+        }
+
+        name_type_id
+    }
+
+    fn primary_struct(&mut self, index: usize, environment: EnvironmentRef) -> usize {
+        let Node { node_type: NodeType::PrimaryStruct { name_start, name_end, argument_list }, node_start } = self.parser.ast[index].clone() else { unreachable!() };
+        let name = self.parser.get_text(name_start, name_end);
+
+        // TODO: Make sure all arguments are provided, and that all arguments have valid names/values.
+        // TODO: Make sure a type id corresponds to this name.
+        let name_type_id = self.parser.type_ids[name];
+        name_type_id
     }
 
     // fn arguments(&mut self, index: usize) {
