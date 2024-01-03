@@ -1,8 +1,10 @@
 /*
  * Possible Improvements:
- * Arrays.
  * Ability to declare extern c functions and call them.
  * Heap allocations (w/ destructors?).
+ * Array[?] (arrays of unknown length) once heap allocations are implemented (this would allow implementing expandable lists, etc, using the language itself)
+    * Arrays with unknown length should be able to be initialized using an expression for size.
+ * Array bounds checking.
  * Add an else branch to the if statement, update does_return tracking accordingly.
  * Logical and/or operators.
  * For loop.

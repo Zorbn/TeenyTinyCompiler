@@ -165,19 +165,27 @@ pub enum NodeType {
         name_end: usize,
         argument_list: Arc<Vec<NamedArgument>>,
     },
-    PrimaryField {
-        name_start: usize,
-        name_end: usize,
-        field_list: Arc<Vec<FieldName>>,
-    },
-    PrimaryIdent {
-        text_start: usize,
-        text_end: usize,
-    },
     PrimaryArray {
         name_start: usize,
         name_end: usize,
         length: usize,
+    },
+    PrimaryVariable {
+        variable_index: usize,
+    },
+    VariableIdent {
+        text_start: usize,
+        text_end: usize,
+    },
+    VariableArrayAccess {
+        name_start: usize,
+        name_end: usize,
+        expression_index: usize,
+    },
+    VariableField {
+        name_start: usize,
+        name_end: usize,
+        field_list: Arc<Vec<FieldName>>,
     },
     Arguments {
         expression_indices: Arc<Vec<usize>>,
@@ -202,8 +210,7 @@ pub enum NodeType {
         expression_index: usize,
     },
     StatementVariableAssignment {
-        name_start: usize,
-        name_end: usize,
+        variable_index: usize,
         expression_index: usize,
     },
     StatementReturnValue {
@@ -317,12 +324,9 @@ impl Parser {
         match length_text.parse::<usize>() {
             Ok(length) => length,
             Err(_) => {
-                self.abort(&format!(
-                    "Invalid array length \"{}\"",
-                    length_text,
-                ));
+                self.abort(&format!("Invalid array length \"{}\"", length_text,));
                 unreachable!()
-            },
+            }
         }
     }
 
@@ -349,9 +353,9 @@ impl Parser {
 
         let text = self.get_text(start_token.text_start, start_token.text_end);
         let element_type_id = *self
-                .simple_type_ids
-                .get(text)
-                .unwrap_or(&(PrimitiveType::Void as usize));
+            .simple_type_ids
+            .get(text)
+            .unwrap_or(&(PrimitiveType::Void as usize));
 
         let key = (text.into(), length);
         if let Some(existing_type_id) = self.array_type_ids.get(&key) {
@@ -359,7 +363,10 @@ impl Parser {
         }
 
         let type_id = self.types.len();
-        self.types.push(TypeDefinition::Array { element_type_id, length });
+        self.types.push(TypeDefinition::Array {
+            element_type_id,
+            length,
+        });
         self.array_type_ids.insert(key, type_id);
 
         type_id
@@ -566,17 +573,14 @@ impl Parser {
                 expression_index,
             });
         }
-        // ident "=" expression
-        else if self.check_token(TokenType::Ident) && self.check_peek(TokenType::Eq) {
-            let name_start = self.current_token.text_start;
-            let name_end = self.current_token.text_end;
-            self.next_token();
+        // variable "=" expression
+        else if self.check_token(TokenType::Ident) && !self.check_peek(TokenType::LParen) {
+            let variable_index = self.variable();
             self.match_token(TokenType::Eq);
             let expression_index = self.expression();
 
             node_type = Some(NodeType::StatementVariableAssignment {
-                name_start,
-                name_end,
+                variable_index,
                 expression_index,
             });
         }
@@ -884,9 +888,10 @@ impl Parser {
         })
     }
 
-    // primary ::= int | float | bool | ident
+    // primary ::= int | float | bool | variable
     fn primary(&mut self) -> usize {
         let text_start = self.current_token.text_start;
+        let first_token_text = self.get_text(text_start, self.current_token.text_end);
         let node_type = match self.current_token.token_type {
             TokenType::IntLiteral => NodeType::PrimaryInt {
                 text_start,
@@ -898,34 +903,6 @@ impl Parser {
             },
             TokenType::True => NodeType::PrimaryBool { is_true: true },
             TokenType::False => NodeType::PrimaryBool { is_true: false },
-            TokenType::Ident if self.check_peek(TokenType::Period) => {
-                let name_start = text_start;
-                let name_end = self.current_token.text_end;
-
-                let mut field_list = Vec::new();
-
-                loop {
-                    self.next_token();
-                    self.match_token(TokenType::Period);
-                    let field_name_start = self.current_token.text_start;
-                    let field_name_end = self.current_token.text_end;
-
-                    field_list.push(FieldName {
-                        name_start: field_name_start,
-                        name_end: field_name_end,
-                    });
-
-                    if !self.check_peek(TokenType::Period) {
-                        break;
-                    }
-                }
-
-                NodeType::PrimaryField {
-                    name_start,
-                    name_end,
-                    field_list: Arc::new(field_list),
-                }
-            }
             TokenType::Ident if self.check_peek(TokenType::LBrace) => {
                 let name_start = text_start;
                 let name_end = self.current_token.text_end;
@@ -956,12 +933,19 @@ impl Parser {
                     argument_list: Arc::new(argument_list),
                 }
             }
-            TokenType::Ident if self.check_peek(TokenType::LBracket) => {
+            // This could be an array literal or an array access.
+            // We'll finding by checking if this is the name of a type.
+            // TODO: Doesn't support nested arrays yet, because we only check simple types.
+            TokenType::Ident
+                if self.check_peek(TokenType::LBracket)
+                    && self.simple_type_ids.contains_key(first_token_text) =>
+            {
                 let name_start = text_start;
                 let name_end = self.current_token.text_end;
 
                 self.next_token();
                 self.next_token();
+
                 let length = self.token_to_array_length(self.current_token);
                 self.next_token();
                 self.match_in_place(TokenType::RBracket);
@@ -971,11 +955,16 @@ impl Parser {
                     name_end,
                     length,
                 }
-            },
-            TokenType::Ident => NodeType::PrimaryIdent {
-                text_start,
-                text_end: self.current_token.text_end,
-            },
+            }
+            TokenType::Ident => {
+                let node = Node {
+                    node_type: NodeType::PrimaryVariable {
+                        variable_index: self.variable(),
+                    },
+                    node_start: text_start,
+                };
+                return self.add_node(node);
+            }
             _ => {
                 let current_token_string =
                     self.get_text(self.current_token.text_start, self.current_token.text_end);
@@ -989,6 +978,60 @@ impl Parser {
         self.add_node(Node {
             node_type,
             node_start: text_start,
+        })
+    }
+
+    // TODO: This needs to be recursive to support complex access, ie: var.array[other_var].x, or var.array[other_array[other_var]].y
+    fn variable(&mut self) -> usize {
+        let name_start = self.current_token.text_start;
+        let name_end = self.current_token.text_end;
+
+        self.next_token();
+
+        let node_type = if self.check_token(TokenType::LBracket) {
+            self.next_token();
+            let expression_index = self.expression();
+            self.match_token(TokenType::RBracket);
+
+            NodeType::VariableArrayAccess {
+                name_start,
+                name_end,
+                expression_index,
+            }
+        } else if self.check_token(TokenType::Period) {
+            let mut field_list = Vec::new();
+
+            loop {
+                self.match_token(TokenType::Period);
+                let field_name_start = self.current_token.text_start;
+                let field_name_end = self.current_token.text_end;
+
+                field_list.push(FieldName {
+                    name_start: field_name_start,
+                    name_end: field_name_end,
+                });
+
+                self.next_token();
+                if !self.check_token(TokenType::Period) {
+                    break;
+                }
+            }
+
+            NodeType::VariableField {
+                name_start,
+                name_end,
+                field_list: Arc::new(field_list),
+            }
+        } else {
+            NodeType::VariableIdent {
+                text_start: name_start,
+                text_end: name_end,
+            }
+        };
+
+        self.add_node(Node {
+            node_type,
+            node_start: name_start,
         })
     }
 }

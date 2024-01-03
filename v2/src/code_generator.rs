@@ -188,7 +188,7 @@ impl CodeGenerator {
         let call_node = &self.parser.ast[call_index];
         match call_node.node_type {
             NodeType::CallFunction { .. } => self.call_function(call_index),
-            NodeType::CallPrimary { .. } => self.call_primary(call_index),
+            NodeType::CallPrimary { .. } => self.primary(call_index),
             _ => self.abort(
                 "Encountered a non-call node within a unary",
                 call_node.node_start,
@@ -207,17 +207,16 @@ impl CodeGenerator {
         self.arguments(arguments_index);
     }
 
-    fn call_primary(&mut self, index: usize) {
+    fn primary(&mut self, index: usize) {
         let Node { node_type: NodeType::CallPrimary { primary_index }, .. } = self.parser.ast[index] else { unreachable!() };
         let primary_node = &self.parser.ast[primary_index];
         match primary_node.node_type {
             NodeType::PrimaryInt { .. } => self.primary_int(primary_index),
             NodeType::PrimaryFloat { .. } => self.primary_float(primary_index),
             NodeType::PrimaryBool { .. } => self.primary_bool(primary_index),
-            NodeType::PrimaryIdent { .. } => self.primary_ident(primary_index),
             NodeType::PrimaryStruct { .. } => self.primary_struct(primary_index),
-            NodeType::PrimaryField { .. } => self.primary_field(primary_index),
             NodeType::PrimaryArray { .. } => self.primary_array(primary_index),
+            NodeType::PrimaryVariable { .. } => self.primary_variable(primary_index),
             _ => self.abort(
                 "Encountered a non-primary node within a call primary",
                 primary_node.node_start,
@@ -246,12 +245,6 @@ impl CodeGenerator {
         });
     }
 
-    fn primary_ident(&mut self, index: usize) {
-        let Node { node_type: NodeType::PrimaryIdent { text_start, text_end }, .. } = self.parser.ast[index] else { unreachable!() };
-        let text = self.parser.get_text(text_start, text_end);
-        self.emitter.emit(text);
-    }
-
     fn primary_struct(&mut self, index: usize) {
         let Node { node_type: NodeType::PrimaryStruct { name_start, name_end, argument_list }, .. } = self.parser.ast[index].clone() else { unreachable!() };
         let name = self.parser.get_text(name_start, name_end);
@@ -275,8 +268,58 @@ impl CodeGenerator {
         self.emitter.emit("}");
     }
 
-    fn primary_field(&mut self, index: usize) {
-        let Node { node_type: NodeType::PrimaryField { name_start, name_end, field_list }, .. } = self.parser.ast[index].clone() else { unreachable!() };
+    fn primary_array(&mut self, index: usize) {
+        let Node { node_type: NodeType::PrimaryArray { .. }, .. } = self.parser.ast[index] else { unreachable!() };
+
+        self.emitter.emit("{0}");
+    }
+
+    fn primary_variable(&mut self, index: usize) {
+        let Node {
+            node_type: NodeType::PrimaryVariable { variable_index },
+            ..
+        } = self.parser.ast[index]
+        else {
+            unreachable!()
+        };
+
+        self.variable(variable_index);
+    }
+
+    fn variable(&mut self, index: usize) {
+        let variable_node = &self.parser.ast[index];
+        match variable_node.node_type {
+            NodeType::VariableIdent { .. } => self.variable_ident(index),
+            NodeType::VariableArrayAccess { .. } => self.variable_array_access(index),
+            NodeType::VariableField { .. } => self.variable_field(index),
+            _ => {
+                self.abort(
+                    "Encountered a non-variable node within a variable access",
+                    variable_node.node_start,
+                );
+                unreachable!()
+            }
+        };
+    }
+
+    fn variable_ident(&mut self, index: usize) {
+        let Node { node_type: NodeType::VariableIdent { text_start, text_end }, .. } = self.parser.ast[index] else { unreachable!() };
+        let text = self.parser.get_text(text_start, text_end);
+        self.emitter.emit(text);
+    }
+
+    fn variable_array_access(&mut self, index: usize) {
+        let Node { node_type: NodeType::VariableArrayAccess { name_start, name_end, expression_index }, .. } = self.parser.ast[index] else { unreachable!() };
+        let name = self.parser.get_text(name_start, name_end);
+
+        self.emitter.emit(name);
+        self.emitter.emit("[");
+        self.expression(expression_index);
+        self.emitter.emit("]");
+    }
+
+    fn variable_field(&mut self, index: usize) {
+        let Node { node_type: NodeType::VariableField { name_start, name_end, field_list }, .. } = self.parser.ast[index].clone() else { unreachable!() };
         let name = self.parser.get_text(name_start, name_end);
 
         self.emitter.emit(name);
@@ -286,12 +329,6 @@ impl CodeGenerator {
             self.emitter.emit(".");
             self.emitter.emit(field_name);
         }
-    }
-
-    fn primary_array(&mut self, index: usize) {
-        let Node { node_type: NodeType::PrimaryArray { .. }, .. } = self.parser.ast[index] else { unreachable!() };
-
-        self.emitter.emit("{0}");
     }
 
     fn arguments(&mut self, index: usize) {
@@ -357,9 +394,8 @@ impl CodeGenerator {
     }
 
     fn statement_variable_assignment(&mut self, index: usize) {
-        let Node { node_type: NodeType::StatementVariableAssignment { name_start, name_end, expression_index }, .. } = self.parser.ast[index] else { unreachable!() };
-        let name = self.parser.get_text(name_start, name_end);
-        self.emitter.emit(name);
+        let Node { node_type: NodeType::StatementVariableAssignment { variable_index, expression_index }, .. } = self.parser.ast[index] else { unreachable!() };
+        self.variable(variable_index);
         self.emitter.emit(" = ");
         self.expression(expression_index);
         self.emitter.emit_line(";");

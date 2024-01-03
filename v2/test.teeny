@@ -1,7 +1,13 @@
 function myPrint(ms: MyStruct): void do
-    print "Vector 2:"
+    print "MyStruct > Vector 2:"
     print ms.e.x
     print ms.e.y
+endfunction
+
+function vecPrint(v: Vec2): void do
+    print "Vector 2:"
+    print v.x
+    print v.y
 endfunction
 
 struct Vec2 of
@@ -17,6 +23,10 @@ struct MyStruct of
     d: float
 
     e: Vec2
+endstruct
+
+struct StructWithArray of
+    sarray: Vec2[3]
 endstruct
 
 function main(): int do
@@ -41,7 +51,43 @@ function main(): int do
         }
     })
 
+    print "Now modifying struct:"
+    let vec: Vec2 = Vec2 {
+        x: 1.0
+        y: 8.0
+    }
+    vec.x = 777.0
+    vecPrint(vec)
+
+    print "Now time for an array:"
+
     let array: int[5] = int[5]
+
+    let i: int = 0
+
+    while i < 5 repeat
+        array[i] = i
+        i = i + 1
+    endwhile
+
+    print array[3]
+
+    print "Now a struct containing an array of structs:"
+
+    let structWithArray: StructWithArray = StructWithArray {
+        sarray: Vec2[3]
+    }
+
+    i = 0
+
+    while i < 3 repeat
+        structWithArray.sarray[i].x = i
+        i = i + 1
+    endwhile
+
+    print array[2].x
+
+    print "done!"
 
     return 0
 endfunction

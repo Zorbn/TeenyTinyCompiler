@@ -136,8 +136,7 @@ impl Lexer {
     pub fn reset_position(&mut self) {
         self.current_char = 0;
         self.current_position = 0;
-        self.next_char();
-        self.current_position = 0;
+        self.set_current_char();
     }
 
     pub fn get_token(&mut self) -> Token {
@@ -152,6 +151,10 @@ impl Lexer {
 
     fn next_char(&mut self) {
         self.current_position += 1;
+        self.set_current_char();
+    }
+
+    fn set_current_char(&mut self) {
         self.current_char = if self.current_position >= self.source.len() {
             b'\0'
         } else {

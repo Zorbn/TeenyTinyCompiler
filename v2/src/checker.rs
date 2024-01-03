@@ -18,12 +18,19 @@ impl<'a> Checker<'a> {
         for (i, t) in parser.types.iter().enumerate() {
             match t {
                 TypeDefinition::Primitive { .. } => (),
-                TypeDefinition::Struct { name_start, name_end, .. } => {
+                TypeDefinition::Struct {
+                    name_start,
+                    name_end,
+                    ..
+                } => {
                     println!("{}, \"{}\"", i, parser.get_text(*name_start, *name_end))
-                },
-                TypeDefinition::Array { element_type_id, length } => {
+                }
+                TypeDefinition::Array {
+                    element_type_id,
+                    length,
+                } => {
                     println!("{}, \"{}[{}]\"", i, *element_type_id, *length)
-                },
+                }
             }
         }
 
@@ -61,7 +68,15 @@ impl<'a> Checker<'a> {
     }
 
     fn program(&mut self, index: usize) {
-        let Node { node_type: NodeType::Program { function_indices, .. }, .. } = self.parser.ast[index].clone() else { unreachable!() };
+        let Node {
+            node_type: NodeType::Program {
+                function_indices, ..
+            },
+            ..
+        } = self.parser.ast[index].clone()
+        else {
+            unreachable!()
+        };
 
         for function_index in function_indices.iter() {
             self.register_function(*function_index);
@@ -76,7 +91,13 @@ impl<'a> Checker<'a> {
     fn block(&mut self, index: usize, mut environment: EnvironmentRef) -> usize {
         environment = new_environment_ref(Some(environment));
 
-        let Node { node_type: NodeType::Block { statement_indices }, .. } = self.parser.ast[index].clone() else { unreachable!() };
+        let Node {
+            node_type: NodeType::Block { statement_indices },
+            ..
+        } = self.parser.ast[index].clone()
+        else {
+            unreachable!()
+        };
 
         let mut return_type_id = PrimitiveType::Void as usize;
 
@@ -130,10 +151,17 @@ impl<'a> Checker<'a> {
     }
 
     fn expression(&mut self, index: usize, environment: EnvironmentRef) -> usize {
-        let Node { node_type: NodeType::Expression {
-            term_index,
-            trailing_terms,
-        }, node_start } = self.parser.ast[index].clone() else { unreachable!() };
+        let Node {
+            node_type:
+                NodeType::Expression {
+                    term_index,
+                    trailing_terms,
+                },
+            node_start,
+        } = self.parser.ast[index].clone()
+        else {
+            unreachable!()
+        };
 
         let mut expression_type_id = self.term(term_index, environment.clone());
 
@@ -157,17 +185,30 @@ impl<'a> Checker<'a> {
     }
 
     fn statement_print_expression(&mut self, index: usize, environment: EnvironmentRef) -> usize {
-        let Node { node_type: NodeType::StatementPrintExpression { expression_index }, .. } = self.parser.ast[index] else { unreachable!() };
+        let Node {
+            node_type: NodeType::StatementPrintExpression { expression_index },
+            ..
+        } = self.parser.ast[index]
+        else {
+            unreachable!()
+        };
         self.expression(expression_index, environment);
 
         PrimitiveType::Void as usize
     }
 
     fn term(&mut self, index: usize, environment: EnvironmentRef) -> usize {
-        let Node { node_type: NodeType::Term {
-            unary_index,
-            trailing_unaries,
-        }, node_start } = self.parser.ast[index].clone() else { unreachable!() };
+        let Node {
+            node_type:
+                NodeType::Term {
+                    unary_index,
+                    trailing_unaries,
+                },
+            node_start,
+        } = self.parser.ast[index].clone()
+        else {
+            unreachable!()
+        };
 
         let mut term_type_id = self.unary(unary_index, environment.clone());
 
@@ -180,12 +221,18 @@ impl<'a> Checker<'a> {
     }
 
     fn unary(&mut self, index: usize, environment: EnvironmentRef) -> usize {
-        let Node { node_type: NodeType::Unary { call_index, .. }, .. } = self.parser.ast[index] else { unreachable!() };
+        let Node {
+            node_type: NodeType::Unary { call_index, .. },
+            ..
+        } = self.parser.ast[index]
+        else {
+            unreachable!()
+        };
 
         let call_node = &self.parser.ast[call_index];
         match call_node.node_type {
             NodeType::CallFunction { .. } => self.call_function(call_index, environment),
-            NodeType::CallPrimary { .. } => self.call_primary(call_index, environment),
+            NodeType::CallPrimary { .. } => self.primary(call_index, environment),
             _ => {
                 self.abort(
                     "Encountered a non-call node within a unary",
@@ -197,12 +244,25 @@ impl<'a> Checker<'a> {
     }
 
     fn call_function(&mut self, index: usize, environment: EnvironmentRef) -> usize {
-        let Node { node_type: NodeType::CallFunction {
-            name_start,
-            name_end,
-            arguments_index,
-        }, node_start } = self.parser.ast[index] else { unreachable!() };
-        let Node { node_type: NodeType::Arguments { expression_indices }, .. } = self.parser.ast[arguments_index].clone() else { unreachable!() };
+        let Node {
+            node_type:
+                NodeType::CallFunction {
+                    name_start,
+                    name_end,
+                    arguments_index,
+                },
+            node_start,
+        } = self.parser.ast[index]
+        else {
+            unreachable!()
+        };
+        let Node {
+            node_type: NodeType::Arguments { expression_indices },
+            ..
+        } = self.parser.ast[arguments_index].clone()
+        else {
+            unreachable!()
+        };
         let function_name = self.parser.get_text(name_start, name_end);
         match self.function_declarations.get(function_name) {
             Some(declaration) => {
@@ -253,17 +313,22 @@ impl<'a> Checker<'a> {
         self.function_declarations[function_name].return_type_id
     }
 
-    fn call_primary(&mut self, index: usize, environment: EnvironmentRef) -> usize {
-        let Node { node_type: NodeType::CallPrimary { primary_index }, .. } = self.parser.ast[index] else { unreachable!() };
+    fn primary(&mut self, index: usize, environment: EnvironmentRef) -> usize {
+        let Node {
+            node_type: NodeType::CallPrimary { primary_index },
+            ..
+        } = self.parser.ast[index]
+        else {
+            unreachable!()
+        };
         let primary_node = &self.parser.ast[primary_index];
         match primary_node.node_type {
             NodeType::PrimaryInt { .. } => self.primary_int(primary_index),
             NodeType::PrimaryFloat { .. } => self.primary_float(primary_index),
             NodeType::PrimaryBool { .. } => self.primary_bool(primary_index),
-            NodeType::PrimaryIdent { .. } => self.primary_ident(primary_index, environment),
-            NodeType::PrimaryField { .. } => self.primary_field(primary_index, environment),
             NodeType::PrimaryStruct { .. } => self.primary_struct(primary_index, environment),
             NodeType::PrimaryArray { .. } => self.primary_array(primary_index),
+            NodeType::PrimaryVariable { .. } => self.primary_variable(primary_index, environment),
             _ => {
                 self.abort(
                     "Encountered a non-primary node within a call primary",
@@ -286,8 +351,161 @@ impl<'a> Checker<'a> {
         PrimitiveType::Bool as usize
     }
 
-    fn primary_ident(&mut self, index: usize, environment: EnvironmentRef) -> usize {
-        let Node { node_type: NodeType::PrimaryIdent { text_start, text_end }, node_start } = self.parser.ast[index] else { unreachable!() };
+    fn primary_struct(&mut self, index: usize, environment: EnvironmentRef) -> usize {
+        let Node {
+            node_type:
+                NodeType::PrimaryStruct {
+                    name_start,
+                    name_end,
+                    argument_list,
+                },
+            node_start,
+        } = self.parser.ast[index].clone()
+        else {
+            unreachable!()
+        };
+        let name = self.parser.get_text(name_start, name_end);
+
+        let name_type_id = match self.parser.simple_type_ids.get(name) {
+            Some(type_id) => *type_id,
+            None => {
+                self.abort(
+                    &format!("Constructing struct of undefined type \"{}\"", name),
+                    node_start,
+                );
+                unreachable!()
+            }
+        };
+
+        let field_list = match &self.parser.types[name_type_id] {
+            TypeDefinition::Struct { field_list, .. } => field_list,
+            _ => {
+                self.abort(
+                    &format!("Can't construct non-struct type \"{}\"", name),
+                    node_start,
+                );
+                unreachable!()
+            }
+        };
+
+        if field_list.len() != argument_list.len() {
+            self.abort(
+                &format!(
+                    "Constructor \"{}\" expected {} arguments but got {}",
+                    name,
+                    field_list.len(),
+                    argument_list.len()
+                ),
+                node_start,
+            );
+        }
+
+        // Check that argument types match parameter types.
+        for (field, argument) in field_list.iter().zip(argument_list.iter()) {
+            let field_name = self.parser.get_text(field.name_start, field.name_end);
+            let argument_name = self.parser.get_text(argument.name_start, argument.name_end);
+
+            if argument_name != field_name {
+                self.abort(
+                    &format!(
+                        "Constructor \"{}\" expected argument for field \"{}\" but got argument for field \"{}\"",
+                        name,
+                        field_name,
+                        argument_name,
+                    ),
+                    node_start,
+                );
+            }
+
+            let expression_type_id =
+                self.expression(argument.expression_index, environment.clone());
+
+            if field.type_id != expression_type_id {
+                self.abort(
+                    &format!(
+                        "Constructor \"{}\" expected argument of type \"{:?}\" for field \"{}\" but got argument of type \"{:?}\"",
+                        name,
+                        self.parser.types[field.type_id],
+                        field_name,
+                        self.parser.types[expression_type_id],
+                    ),
+                    node_start,
+                );
+            }
+        }
+
+        name_type_id
+    }
+
+    fn primary_array(&mut self, index: usize) -> usize {
+        let Node {
+            node_type:
+                NodeType::PrimaryArray {
+                    name_start,
+                    name_end,
+                    length,
+                },
+            node_start,
+        } = self.parser.ast[index]
+        else {
+            unreachable!()
+        };
+        let name = self.parser.get_text(name_start, name_end);
+
+        let name_type_id = match self.parser.array_type_ids.get(&(name.into(), length)) {
+            Some(type_id) => *type_id,
+            None => {
+                self.abort(
+                    &format!("Constructing array of undefined type \"{}\"", name),
+                    node_start,
+                );
+                unreachable!()
+            }
+        };
+
+        name_type_id
+    }
+
+    fn primary_variable(&mut self, index: usize, environment: EnvironmentRef) -> usize {
+        let Node {
+            node_type: NodeType::PrimaryVariable { variable_index },
+            ..
+        } = self.parser.ast[index]
+        else {
+            unreachable!()
+        };
+
+        self.variable(variable_index, environment)
+    }
+
+    fn variable(&mut self, index: usize, environment: EnvironmentRef) -> usize {
+        let variable_node = &self.parser.ast[index];
+        match variable_node.node_type {
+            NodeType::VariableIdent { .. } => self.variable_ident(index, environment),
+            NodeType::VariableArrayAccess { .. } => self.variable_array_access(index, environment),
+            NodeType::VariableField { .. } => self.variable_field(index, environment),
+            _ => {
+                self.abort(
+                    "Encountered a non-variable node within a variable access",
+                    variable_node.node_start,
+                );
+                unreachable!()
+            }
+        }
+    }
+
+    fn variable_ident(&mut self, index: usize, environment: EnvironmentRef) -> usize {
+        let Node {
+            node_type:
+                NodeType::VariableIdent {
+                    text_start,
+                    text_end,
+                },
+            node_start,
+        } = self.parser.ast[index]
+        else {
+            unreachable!()
+        };
         let text = self.parser.get_text(text_start, text_end);
 
         match environment.borrow().get_symbol_type_id(text) {
@@ -302,8 +520,65 @@ impl<'a> Checker<'a> {
         }
     }
 
-    fn primary_field(&mut self, index: usize, environment: EnvironmentRef) -> usize {
-        let Node { node_type: NodeType::PrimaryField { name_start, name_end, field_list }, node_start } = self.parser.ast[index].clone() else { unreachable!() };
+    fn variable_array_access(&mut self, index: usize, environment: EnvironmentRef) -> usize {
+        let Node {
+            node_type:
+                NodeType::VariableArrayAccess {
+                    name_start,
+                    name_end,
+                    expression_index,
+                },
+            node_start,
+        } = self.parser.ast[index]
+        else {
+            unreachable!()
+        };
+        let name = self.parser.get_text(name_start, name_end);
+
+        let expression_type_id = self.expression(expression_index, environment.clone());
+        if expression_type_id != PrimitiveType::Int as usize {
+            self.abort(
+                &format!("Can't use non-integer index to access array \"{}\"", name),
+                node_start,
+            );
+        }
+
+        match environment.borrow().get_symbol_type_id(name) {
+            Some(type_id) => match self.parser.types[type_id] {
+                TypeDefinition::Array {
+                    element_type_id, ..
+                } => element_type_id,
+                _ => {
+                    self.abort(
+                        &format!("Can't index non-array variable \"{}\"", name),
+                        node_start,
+                    );
+                    unreachable!()
+                }
+            },
+            None => {
+                self.abort(
+                    &format!("Referencing undefined variable \"{}\"", name),
+                    node_start,
+                );
+                unreachable!()
+            }
+        }
+    }
+
+    fn variable_field(&mut self, index: usize, environment: EnvironmentRef) -> usize {
+        let Node {
+            node_type:
+                NodeType::VariableField {
+                    name_start,
+                    name_end,
+                    field_list,
+                },
+            node_start,
+        } = self.parser.ast[index].clone()
+        else {
+            unreachable!()
+        };
         let name = self.parser.get_text(name_start, name_end);
 
         // TODO: Could this check be merged with the ident check? The name at the start of a field should be an identifer,
@@ -328,12 +603,14 @@ impl<'a> Checker<'a> {
                         node_start,
                     );
                     unreachable!()
-                },
+                }
             };
 
             let field_name = self.parser.get_text(field.name_start, field.name_end);
             for possible_field in possible_fields_list.iter() {
-                let possible_field_name = self.parser.get_text(possible_field.name_start, possible_field.name_end);
+                let possible_field_name = self
+                    .parser
+                    .get_text(possible_field.name_start, possible_field.name_end);
                 if field_name == possible_field_name {
                     // This is the correct field, store it's type id, the last field's type id is the expression's type id.
                     name_type_id = possible_field.type_id;
@@ -351,118 +628,39 @@ impl<'a> Checker<'a> {
         name_type_id
     }
 
-    fn primary_struct(&mut self, index: usize, environment: EnvironmentRef) -> usize {
-        let Node { node_type: NodeType::PrimaryStruct { name_start, name_end, argument_list }, node_start } = self.parser.ast[index].clone() else { unreachable!() };
-        let name = self.parser.get_text(name_start, name_end);
-
-        let name_type_id = match self.parser.simple_type_ids.get(name) {
-            Some(type_id) => *type_id,
-            None => {
-                self.abort(
-                    &format!("Constructing struct of undefined type \"{}\"", name),
-                    node_start,
-                );
-                unreachable!()
-            },
-        };
-
-        let field_list = match &self.parser.types[name_type_id] {
-            TypeDefinition::Struct { field_list, .. } => field_list,
-            _ => {
-                self.abort(
-                    &format!("Can't construct non-struct type \"{}\"", name),
-                    node_start,
-                );
-                unreachable!()
-            },
-        };
-
-        if field_list.len() != argument_list.len() {
-            self.abort(
-                &format!(
-                    "Constructor \"{}\" expected {} arguments but got {}",
-                    name,
-                    field_list.len(),
-                    argument_list.len()
-                ),
-                node_start,
-            );
-        }
-
-        // Check that argument types match parameter types.
-        for (field, argument) in field_list
-            .iter()
-            .zip(argument_list.iter())
-        {
-            let field_name = self.parser.get_text(field.name_start, field.name_end);
-            let argument_name = self.parser.get_text(argument.name_start, argument.name_end);
-
-            if argument_name != field_name {
-                self.abort(
-                    &format!(
-                        "Constructor \"{}\" expected argument for field \"{}\" but got argument for field \"{}\"",
-                        name,
-                        field_name,
-                        argument_name,
-                    ),
-                    node_start,
-                );
-            }
-
-            let expression_type_id =
-                        self.expression(argument.expression_index, environment.clone());
-
-            if field.type_id != expression_type_id {
-                self.abort(
-                    &format!(
-                        "Constructor \"{}\" expected argument of type \"{:?}\" for field \"{}\" but got argument of type \"{:?}\"",
-                        name,
-                        self.parser.types[field.type_id],
-                        field_name,
-                        self.parser.types[expression_type_id],
-                    ),
-                    node_start,
-                );
-            }
-        }
-
-        name_type_id
-    }
-
-    fn primary_array(&mut self, index: usize) -> usize {
-        let Node { node_type: NodeType::PrimaryArray { name_start, name_end, length }, node_start } = self.parser.ast[index] else { unreachable!() };
-        let name = self.parser.get_text(name_start, name_end);
-
-        let name_type_id = match self.parser.array_type_ids.get(&(name.into(), length)) {
-            Some(type_id) => *type_id,
-            None => {
-                self.abort(
-                    &format!("Constructing array of undefined type \"{}\"", name),
-                    node_start,
-                );
-                unreachable!()
-            },
-        };
-
-        name_type_id
-    }
-
     // fn arguments(&mut self, index: usize) {
     //     let Node::Arguments { expression_indices } = self.parser.ast[index].clone() else { unreachable!() };
     // }
 
     fn comparison(&mut self, index: usize, environment: EnvironmentRef) {
-        let Node { node_type: NodeType::Comparison {
-            left_expression_index,
-            right_expression_index,
+        let Node {
+            node_type:
+                NodeType::Comparison {
+                    left_expression_index,
+                    right_expression_index,
+                    ..
+                },
             ..
-        }, .. } = self.parser.ast[index] else { unreachable!() };
+        } = self.parser.ast[index]
+        else {
+            unreachable!()
+        };
         self.expression(left_expression_index, environment.clone());
         self.expression(right_expression_index, environment);
     }
 
     fn statement_if(&mut self, index: usize, environment: EnvironmentRef) -> usize {
-        let Node { node_type: NodeType::StatementIf { comparison_index, block_index }, .. } = self.parser.ast[index] else { unreachable!() };
+        let Node {
+            node_type:
+                NodeType::StatementIf {
+                    comparison_index,
+                    block_index,
+                },
+            ..
+        } = self.parser.ast[index]
+        else {
+            unreachable!()
+        };
         self.comparison(comparison_index, environment.clone());
         self.block(block_index, environment);
 
@@ -470,7 +668,17 @@ impl<'a> Checker<'a> {
     }
 
     fn statement_while(&mut self, index: usize, environment: EnvironmentRef) -> usize {
-        let Node { node_type: NodeType::StatementWhile { comparison_index, block_index }, .. } = self.parser.ast[index] else { unreachable!() };
+        let Node {
+            node_type:
+                NodeType::StatementWhile {
+                    comparison_index,
+                    block_index,
+                },
+            ..
+        } = self.parser.ast[index]
+        else {
+            unreachable!()
+        };
         self.comparison(comparison_index, environment.clone());
         self.block(block_index, environment);
 
@@ -482,7 +690,19 @@ impl<'a> Checker<'a> {
         index: usize,
         environment: EnvironmentRef,
     ) -> usize {
-        let Node { node_type: NodeType::StatementVariableDeclaration { name_start, name_end, type_id, expression_index }, node_start } = self.parser.ast[index] else { unreachable!() };
+        let Node {
+            node_type:
+                NodeType::StatementVariableDeclaration {
+                    name_start,
+                    name_end,
+                    type_id,
+                    expression_index,
+                },
+            node_start,
+        } = self.parser.ast[index]
+        else {
+            unreachable!()
+        };
         let name = self.parser.get_text(name_start, name_end);
         // TODO: This prevents shadowing, maybe it shouldn't?
         if environment.borrow().has_symbol(name) {
@@ -512,21 +732,24 @@ impl<'a> Checker<'a> {
         index: usize,
         environment: EnvironmentRef,
     ) -> usize {
-        let Node { node_type: NodeType::StatementVariableAssignment { name_start, name_end, expression_index }, node_start } = self.parser.ast[index] else { unreachable!() };
-        let name = self.parser.get_text(name_start, name_end);
-        let type_id = match environment.borrow().get_symbol_type_id(name) {
-            Some(value_type) => value_type,
-            None => {
-                self.abort(&format!("Variable not declared \"{}\"", name), node_start);
-                unreachable!()
-            }
+        let Node {
+            node_type:
+                NodeType::StatementVariableAssignment {
+                    variable_index,
+                    expression_index,
+                },
+            node_start,
+        } = self.parser.ast[index]
+        else {
+            unreachable!()
         };
-        let expression_type = self.expression(expression_index, environment);
-        if expression_type != type_id {
+        let variable_type_id = self.variable(variable_index, environment.clone());
+        let expression_type_id = self.expression(expression_index, environment);
+        if expression_type_id != variable_type_id {
             self.abort(
                 &format!(
                     "Cannot assign value of type \"{:?}\" to variable of type \"{:?}\"",
-                    expression_type, type_id
+                    expression_type_id, variable_type_id
                 ),
                 node_start,
             );
@@ -536,7 +759,13 @@ impl<'a> Checker<'a> {
     }
 
     fn statement_return_value(&mut self, index: usize, environment: EnvironmentRef) -> usize {
-        let Node { node_type: NodeType::StatementReturnValue { expression_index }, .. } = self.parser.ast[index] else { unreachable!() };
+        let Node {
+            node_type: NodeType::StatementReturnValue { expression_index },
+            ..
+        } = self.parser.ast[index]
+        else {
+            unreachable!()
+        };
         self.expression(expression_index, environment)
     }
 
@@ -545,15 +774,43 @@ impl<'a> Checker<'a> {
     }
 
     fn statement_expression(&mut self, index: usize, environment: EnvironmentRef) -> usize {
-        let Node { node_type: NodeType::StatementExpression { expression_index }, .. } = self.parser.ast[index] else { unreachable!() };
+        let Node {
+            node_type: NodeType::StatementExpression { expression_index },
+            ..
+        } = self.parser.ast[index]
+        else {
+            unreachable!()
+        };
         self.expression(expression_index, environment);
 
         PrimitiveType::Void as usize
     }
 
     fn register_function(&mut self, index: usize) {
-        let Node { node_type: NodeType::Function { name_start, name_end, parameters_index, .. }, node_start } = self.parser.ast[index] else { unreachable!() };
-        let Node { node_type: NodeType::Parameters { input_list, return_type_id }, .. } = self.parser.ast[parameters_index].clone() else { unreachable!() };
+        let Node {
+            node_type:
+                NodeType::Function {
+                    name_start,
+                    name_end,
+                    parameters_index,
+                    ..
+                },
+            node_start,
+        } = self.parser.ast[index]
+        else {
+            unreachable!()
+        };
+        let Node {
+            node_type:
+                NodeType::Parameters {
+                    input_list,
+                    return_type_id,
+                },
+            ..
+        } = self.parser.ast[parameters_index].clone()
+        else {
+            unreachable!()
+        };
 
         let name = self.parser.get_text(name_start, name_end);
         if self.function_declarations.contains_key(name) {
@@ -579,8 +836,25 @@ impl<'a> Checker<'a> {
     }
 
     fn function(&mut self, index: usize, environment: EnvironmentRef) {
-        let Node { node_type: NodeType::Function { parameters_index, block_index, .. }, node_start } = self.parser.ast[index] else { unreachable!() };
-        let Node { node_type: NodeType::Parameters { return_type_id, .. }, .. } = self.parser.ast[parameters_index].clone() else { unreachable!() };
+        let Node {
+            node_type:
+                NodeType::Function {
+                    parameters_index,
+                    block_index,
+                    ..
+                },
+            node_start,
+        } = self.parser.ast[index]
+        else {
+            unreachable!()
+        };
+        let Node {
+            node_type: NodeType::Parameters { return_type_id, .. },
+            ..
+        } = self.parser.ast[parameters_index].clone()
+        else {
+            unreachable!()
+        };
         self.parameters(parameters_index, environment.clone());
         let block_return_type_id = self.block(block_index, environment);
         if block_return_type_id != return_type_id {
@@ -590,14 +864,18 @@ impl<'a> Checker<'a> {
     }
 
     fn parameters(&mut self, index: usize, environment: EnvironmentRef) {
-        let Node { node_type: NodeType::Parameters { input_list, .. }, .. } = self.parser.ast[index].clone() else { unreachable!() };
+        let Node {
+            node_type: NodeType::Parameters { input_list, .. },
+            ..
+        } = self.parser.ast[index].clone()
+        else {
+            unreachable!()
+        };
         for parameter in input_list.iter() {
             let name = self
                 .parser
                 .get_text(parameter.name_start, parameter.name_end);
-            environment
-                .borrow_mut()
-                .add_symbol(name, parameter.type_id);
+            environment.borrow_mut().add_symbol(name, parameter.type_id);
         }
     }
 }
